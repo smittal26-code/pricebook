@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Price Book - Setup Guide</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#F5F4F0;color:#1A1816;font-size:14px;padding:0 0 40px}
+.hero{background:linear-gradient(135deg,#B5A04A,#7A6A1A);padding:32px 20px;text-align:center;color:#fff}
+.gem{font-size:48px;margin-bottom:8px}
+.hero h1{font-size:22px;font-weight:700;margin-bottom:4px}
+.hero p{font-size:13px;opacity:.85}
+.content{padding:16px}
+.card{background:#fff;border:1px solid #E0DDD5;border-radius:14px;padding:16px;margin-bottom:12px}
+.card h2{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px;color:#1A1816}
+.step{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.step-num{background:#B5A04A;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
+.step-body{flex:1}
+.step-title{font-weight:600;font-size:13px;margin-bottom:2px}
+.step-desc{font-size:12px;color:#5A574F;line-height:1.6}
+.highlight{background:#FFF9E6;border:1px solid #B5A04A;border-radius:8px;padding:10px 12px;font-size:12px;color:#7A6A1A;margin-top:8px;line-height:1.6}
+.os-tabs{display:flex;gap:0;border:1px solid #E0DDD5;border-radius:8px;overflow:hidden;margin-bottom:12px}
+.os-tab{flex:1;padding:8px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;background:#F3F2EE;color:#5A574F;border-right:1px solid #E0DDD5;transition:all .15s}
+.os-tab:last-child{border-right:none}
+.os-tab.active{background:#FFF9E6;color:#7A6A1A}
+.os-content{display:none}
+.os-content.active{display:block}
+.badge-pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid}
+.badge-and{background:#EAF3DE;color:#27500A;border-color:#C0DD97}
+.badge-ios{background:#E6F1FB;color:#0C447C;border-color:#85B7EB}
+.open-btn{display:block;width:100%;padding:14px;background:#B5A04A;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;margin-top:4px;letter-spacing:.3px}
+.open-btn:hover{background:#9A8538}
+.tip{background:#E6F1FB;border:1px solid #85B7EB;border-radius:8px;padding:10px 12px;font-size:12px;color:#0C447C;margin-top:10px;line-height:1.6}
+.warn{background:#FCEBEB;border:1px solid #F7C1C1;border-radius:8px;padding:10px 12px;font-size:12px;color:#A32D2D;margin-top:10px;line-height:1.6}
+.divider{height:1px;background:#E0DDD5;margin:12px 0}
+.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.feature{background:#F3F2EE;border-radius:8px;padding:9px 10px;font-size:11px;color:#5A574F;display:flex;align-items:flex-start;gap:5px}
+.feature-icon{font-size:16px;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="gem">&#10022;</div>
+  <h1>Jewellery Price Book</h1>
+  <p>Gold &bull; Silver &bull; Diamond price tracker</p>
+</div>
+
+<div class="content">
+
+  <!-- LAUNCH BUTTON -->
+  <a href="jewellery_pricebook_v2.html" class="open-btn">&#128200; Open Price Book App</a>
+  <div class="tip" style="margin-top:8px;text-align:center">&#128337; First time? Read the setup steps below</div>
+
+  <!-- STEP 1: HOW TO INSTALL -->
+  <div class="card" style="margin-top:12px">
+    <h2>&#128640; Install as App on Phone</h2>
+
+    <div class="os-tabs">
+      <div class="os-tab active" onclick="switchOS('android',this)">&#129504; Android</div>
+      <div class="os-tab" onclick="switchOS('ios',this)">&#63743; iPhone / iPad</div>
+    </div>
+
+    <div class="os-content active" id="os-android">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open in Chrome</div>
+          <div class="step-desc">Make sure you are using <strong>Chrome browser</strong> (not Samsung Browser or other). Tap the link above to open the app.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Tap Install banner</div>
+          <div class="step-desc">Chrome shows a banner at the bottom: <strong>"Add Price Book to Home screen"</strong> &mdash; tap <strong>Install</strong>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">If no banner shows</div>
+          <div class="step-desc">Tap Chrome <strong>3-dot menu</strong> (top right) &rarr; tap <strong>"Add to Home screen"</strong> &rarr; tap <strong>Add</strong>.</div>
+        </div>
+      </div>
+      <div class="highlight">&#10003; App installs with gold gem icon on your home screen. Opens full screen like a real app &mdash; no browser bar.</div>
+    </div>
+
+    <div class="os-content" id="os-ios">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open in Safari</div>
+          <div class="step-desc">Tap the link above. Make sure it opens in <strong>Safari</strong> (not Chrome on iPhone &mdash; Chrome on iPhone cannot install PWA).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Tap the Share button</div>
+          <div class="step-desc">At the bottom of Safari, tap the <strong>Share icon</strong> (box with arrow pointing up &#8679;).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Add to Home Screen</div>
+          <div class="step-desc">Scroll down in the share sheet and tap <strong>"Add to Home Screen"</strong>. Tap <strong>Add</strong> in top right.</div>
+        </div>
+      </div>
+      <div class="highlight">&#10003; Price Book icon appears on home screen. Tap it &mdash; opens full screen with no Safari address bar.</div>
+    </div>
+  </div>
+
+  <!-- STEP 2: GOOGLE DRIVE -->
+  <div class="card">
+    <h2>&#9729; Connect Google Drive</h2>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Log into Gmail first</div>
+        <div class="step-desc">Open Chrome/Safari &rarr; go to <strong>gmail.com</strong> &rarr; sign in as <strong>sumitskjewellers@gmail.com</strong>. Do this before opening the app.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Open the app</div>
+        <div class="step-desc">Tap Price Book from home screen. Top right shows <strong>"Connecting..."</strong> then turns <strong>green "Drive synced"</strong>.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Verify it works</div>
+        <div class="step-desc">Add one test entry &rarr; tap Save to Drive &rarr; open <strong>drive.google.com</strong> on your computer &rarr; look for file <strong>jewellery_pricebook_v4.json</strong>.</div>
+      </div>
+    </div>
+    <div class="highlight">&#9729; All your data &mdash; suppliers, prices, images &mdash; saves automatically to sumitskjewellers@gmail.com Google Drive after every entry.</div>
+  </div>
+
+  <!-- STEP 3: VISITING CARD -->
+  <div class="card">
+    <h2>&#128204; Scanning Visiting Cards</h2>
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Tap "Front side" box</div>
+        <div class="step-desc">Your phone camera or gallery opens. Take a clear photo of the <strong>front of the visiting card</strong>.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Tap "Back side" box</div>
+        <div class="step-desc">Same process for the <strong>back of the card</strong> (if it has address or more numbers).</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Tap "Read with AI"</div>
+        <div class="step-desc">AI reads both sides together and fills in <strong>firm name, all phone numbers, address</strong> automatically. You just review and correct.</div>
+      </div>
+    </div>
+    <div class="warn">&#9888; This does NOT work inside Claude.ai chat. Must be opened in Chrome or Safari on your phone directly.</div>
+  </div>
+
+  <!-- FEATURES -->
+  <div class="card">
+    <h2>&#10022; What the App Does</h2>
+    <div class="feature-grid">
+      <div class="feature"><div class="feature-icon">&#128230;</div><div>Gold, Silver, Diamond price entries per supplier</div></div>
+      <div class="feature"><div class="feature-icon">&#128204;</div><div>AI visiting card scanner (both sides)</div></div>
+      <div class="feature"><div class="feature-icon">&#9878;&#65039;</div><div>Compare prices across suppliers instantly</div></div>
+      <div class="feature"><div class="feature-icon">&#11088;</div><div>Star ratings for suppliers and images</div></div>
+      <div class="feature"><div class="feature-icon">&#128444;</div><div>Image catalogue with zoom and WhatsApp share</div></div>
+      <div class="feature"><div class="feature-icon">&#9729;</div><div>Auto-save to your Google Drive</div></div>
+      <div class="feature"><div class="feature-icon">&#128247;</div><div>Works offline after first load</div></div>
+      <div class="feature"><div class="feature-icon">&#128279;</div><div>Share catalogue links on WhatsApp</div></div>
+    </div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:#9A9186;margin-top:8px">
+    Jewellery Price Book &bull; Data stored at sumitskjewellers@gmail.com
+  </div>
+</div>
+
+<script>
+function switchOS(os, btn) {
+  document.querySelectorAll('.os-tab').forEach(function(t){t.classList.remove('active');});
+  document.querySelectorAll('.os-content').forEach(function(c){c.classList.remove('active');});
+  btn.classList.add('active');
+  document.getElementById('os-'+os).classList.add('active');
+}
+</script>
+</body>
+</html>
