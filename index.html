@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Jewellery Price Book</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/pricebook/manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='28' fill='%23B5A04A'/><text y='130' x='30' font-size='120' font-family='serif'>&#10022;</text></svg>">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -587,7 +587,7 @@ if (isIOS && !isInStandaloneMode) {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js').then(function(reg) {
+    navigator.serviceWorker.register('/pricebook/sw.js').then(function(reg) {
       console.log('SW registered:', reg.scope);
     }).catch(function(err) {
       console.log('SW error:', err);
