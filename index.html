@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Jewellery Price Book</title>
+<meta name="app-version" content="v3.1">
 <link rel="manifest" href="/pricebook/manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='28' fill='%23B5A04A'/><text y='130' x='30' font-size='120' font-family='serif'>&#10022;</text></svg>">
 <meta name="mobile-web-app-capable" content="yes">
@@ -461,12 +462,14 @@ var lastTap=0,zHintT,zLvlT,swX=0,curLnk="";
 
 function goP(p,btn){document.querySelectorAll(".pg").forEach(function(x){x.classList.remove("active");});document.querySelectorAll(".nb").forEach(function(x){x.classList.remove("active");});document.getElementById("pg-"+p).classList.add("active");if(btn)btn.classList.add("active");if(p==="browse")renderBr();if(p==="cat")renderCat();if(p==="sup")renderSup();if(p==="compare"){lcSub();lcIt();}}
 function togCol(bid,tid){
-  var b=document.getElementById(bid);
-  var t=document.getElementById(tid);
-  if(!b||!t)return;
-  var h=b.style.display==="none"||b.style.display==="";
-  b.style.display=h?"block":"none";
-  t.textContent=h?"Collapse":"Expand";
+  try {
+    var b=document.getElementById(bid);
+    var t=document.getElementById(tid);
+    if(!b||!t){alert('Toggle error: element not found');return;}
+    var isHidden = b.style.display==='none';
+    b.style.display = isHidden ? 'block' : 'none';
+    t.textContent = isHidden ? 'Collapse' : 'Expand';
+  } catch(e) { console.error('togCol error:',e); }
 }
 
 function onSide(w,e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){var src=ev.target.result;sides[w]={src:src,b64:src.split(",")[1],mime:f.type||"image/jpeg"};document.getElementById(w==="front"?"fbox":"bbox").classList.add("done");var p=document.getElementById(w==="front"?"fprev":"bprev");p.src=src;p.style.display="block";document.getElementById(w==="front"?"flbl":"blbl").textContent=w==="front"?"Front OK":"Back OK";document.getElementById(w==="front"?"fhint":"bhint").textContent="Tap to change";var b=document.getElementById("scanbtn");b.disabled=false;b.style.opacity="1";
@@ -612,14 +615,24 @@ if (isIOS && !isInStandaloneMode) {
   }, 500);
 }
 
+// Clear ALL old service workers and caches first
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/pricebook/sw.js').then(function(reg) {
-      console.log('SW registered:', reg.scope);
-    }).catch(function(err) {
-      console.log('SW error:', err);
-    });
+  // Unregister all old service workers
+  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+    for(var r of registrations) { r.unregister(); }
   });
+  // Clear all caches
+  if('caches' in window) {
+    caches.keys().then(function(names) {
+      for(var name of names) { caches.delete(name); }
+    });
+  }
+  // Register fresh SW after short delay
+  setTimeout(function() {
+    navigator.serviceWorker.register('/pricebook/sw.js?v=3')
+      .then(function(reg){ console.log('SW v3 registered'); })
+      .catch(function(err){ console.log('SW skip:', err); });
+  }, 2000);
 }
 
 // PWA install prompt
