@@ -485,25 +485,224 @@ wrapper.appendChild(img);wrapper.appendChild(lbl);strip.appendChild(wrapper);
 
 async function scanCard(){var hF=!!sides.front,hB=!!sides.back;if(!hF&&!hB)return;document.getElementById("cardai").classList.add("on");document.getElementById("caitxt").textContent=hF&&hB?"Reading both sides":"Reading card";document.getElementById("scanbtn").disabled=true;var cnt=[];if(hF){cnt.push({type:"image",source:{type:"base64",media_type:sides.front.mime,data:sides.front.b64}});cnt.push({type:"text",text:hB?"FRONT side of visiting card.":"This is a visiting card."});}if(hB){cnt.push({type:"image",source:{type:"base64",media_type:sides.back.mime,data:sides.back.b64}});cnt.push({type:"text",text:"BACK side of same visiting card."});}cnt.push({type:"text",text:'Extract ALL info. Combine both sides. Return ONLY valid JSON no markdown: {"firm":"","contacts":[{"name":"","role":""}],"phones":[{"type":"mobile|whatsapp|office|other","number":""}],"address":"","notes":""}. Deduplicate numbers. Combine address from both sides.'});try{var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:800,messages:[{role:"user",content:cnt}]})});var d=await r.json();var tx=d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");var m=tx.match(/\{[\s\S]*\}/);if(m){fillCard(JSON.parse(m[0]));toast("Card read - review fields","ok");}else toast("Could not read - fill manually","err");}catch(e){toast("AI error: "+e.message,"err");}document.getElementById("cardai").classList.remove("on");document.getElementById("scanbtn").disabled=false;}
 
-function fillCard(d){if(d.firm)document.getElementById("sfirm").value=d.firm;if(d.address)document.getElementById("saddr").value=d.address;if(d.notes)document.getElementById("snotes").value=d.notes;if(d.contacts&&d.contacts.length){document.getElementById("cwrap").innerHTML="";crC=0;d.contacts.forEach(function(c,i){var id="crf"+i;var dv=document.createElement("div");dv.className="cr";dv.id=id;dv.innerHTML='<div class="fg"><label>Name</label><input type="text" class="cn" value="'+esc(c.name||'')+'"></div><div class="fg"><label>Role</label><input type="text" class="cro" value="'+esc(c.role||'')+'"></div><button class="btn sm dan" onclick="rm(''+id+'')" style="margin-top:16px">Del</button>';document.getElementById("cwrap").appendChild(dv);});}if(d.phones&&d.phones.length){document.getElementById("pwrap").innerHTML="";prC=0;d.phones.forEach(function(p,i){var id="prf"+i;var dv=document.createElement("div");dv.className="pr";dv.id=id;var op=["mobile","whatsapp","office","other"].map(function(t){return'<option value="'+t+'"'+(p.type===t?" selected":"")+">"+(t[0].toUpperCase()+t.slice(1))+"</option>";}).join("");dv.innerHTML='<div class="fg"><label>Type</label><select class="pt">'+op+'</select></div><div class="fg"><label>Number</label><input type="tel" class="pn" value="'+esc(p.number||'')+'"></div><button class="btn sm dan" onclick="rm(''+id+'')" style="margin-top:16px">Del</button>';document.getElementById("pwrap").appendChild(dv);});}}
+function fillCard(d){
+  if(d.firm)document.getElementById("sfirm").value=d.firm;
+  if(d.address)document.getElementById("saddr").value=d.address;
+  if(d.notes)document.getElementById("snotes").value=d.notes;
+  if(d.contacts&&d.contacts.length){
+    document.getElementById("cwrap").innerHTML="";
+    crC=0;
+    d.contacts.forEach(function(c,i){
+      var id="crf"+i;
+      var dv=document.createElement("div");
+      dv.className="cr";
+      dv.id=id;
+      var nameInput=document.createElement("input");
+      nameInput.type="text";nameInput.className="cn";nameInput.value=c.name||"";
+      var roleInput=document.createElement("input");
+      roleInput.type="text";roleInput.className="cro";roleInput.value=c.role||"";
+      var fg1=document.createElement("div");fg1.className="fg";
+      var lbl1=document.createElement("label");lbl1.textContent="Name";
+      fg1.appendChild(lbl1);fg1.appendChild(nameInput);
+      var fg2=document.createElement("div");fg2.className="fg";
+      var lbl2=document.createElement("label");lbl2.textContent="Role";
+      fg2.appendChild(lbl2);fg2.appendChild(roleInput);
+      var delBtn=document.createElement("button");
+      delBtn.className="btn sm dan";delBtn.textContent="Del";
+      delBtn.style.marginTop="16px";
+      delBtn.onclick=function(){rm(id);};
+      dv.appendChild(fg1);dv.appendChild(fg2);dv.appendChild(delBtn);
+      document.getElementById("cwrap").appendChild(dv);
+    });
+  }
+  if(d.phones&&d.phones.length){
+    document.getElementById("pwrap").innerHTML="";
+    prC=0;
+    d.phones.forEach(function(p,i){
+      var id="prf"+i;
+      var dv=document.createElement("div");
+      dv.className="pr";
+      dv.id=id;
+      var fg1=document.createElement("div");fg1.className="fg";
+      var lbl1=document.createElement("label");lbl1.textContent="Type";
+      var sel=document.createElement("select");sel.className="pt";
+      ["mobile","whatsapp","office","other"].forEach(function(t){
+        var opt=document.createElement("option");
+        opt.value=t;
+        opt.textContent=t.charAt(0).toUpperCase()+t.slice(1);
+        if(p.type===t)opt.selected=true;
+        sel.appendChild(opt);
+      });
+      fg1.appendChild(lbl1);fg1.appendChild(sel);
+      var fg2=document.createElement("div");fg2.className="fg";
+      var lbl2=document.createElement("label");lbl2.textContent="Number";
+      var numInput=document.createElement("input");
+      numInput.type="tel";numInput.className="pn";numInput.value=p.number||"";
+      fg2.appendChild(lbl2);fg2.appendChild(numInput);
+      var delBtn=document.createElement("button");
+      delBtn.className="btn sm dan";delBtn.textContent="Del";
+      delBtn.style.marginTop="16px";
+      delBtn.onclick=function(){rm(id);};
+      dv.appendChild(fg1);dv.appendChild(fg2);dv.appendChild(delBtn);
+      document.getElementById("pwrap").appendChild(dv);
+    });
+  }
+}
 
-function addCR(){crC++;var id="cr"+crC;var dv=document.createElement("div");dv.className="cr";dv.id=id;dv.innerHTML='<div class="fg"><label>Name</label><input type="text" class="cn" placeholder="Name"></div><div class="fg"><label>Role</label><input type="text" class="cro" placeholder="Role"></div><button class="btn sm dan" onclick="rm(''+id+'')" style="margin-top:16px">Del</button>';document.getElementById("cwrap").appendChild(dv);}
-function addPR(){prC++;var id="pr"+prC;var dv=document.createElement("div");dv.className="pr";dv.id=id;dv.innerHTML='<div class="fg"><label>Type</label><select class="pt"><option value="mobile">Mobile</option><option value="whatsapp">WhatsApp</option><option value="office">Office</option><option value="other">Other</option></select></div><div class="fg"><label>Number</label><input type="tel" class="pn" placeholder="Number"></div><button class="btn sm dan" onclick="rm(''+id+'')" style="margin-top:16px">Del</button>';document.getElementById("pwrap").appendChild(dv);}
+function addCR(){
+  crC++;
+  var id="cr"+crC;
+  var dv=document.createElement("div");
+  dv.className="cr";dv.id=id;
+  var fg1=document.createElement("div");fg1.className="fg";
+  var l1=document.createElement("label");l1.textContent="Name";
+  var i1=document.createElement("input");i1.type="text";i1.className="cn";i1.placeholder="Name";
+  fg1.appendChild(l1);fg1.appendChild(i1);
+  var fg2=document.createElement("div");fg2.className="fg";
+  var l2=document.createElement("label");l2.textContent="Role";
+  var i2=document.createElement("input");i2.type="text";i2.className="cro";i2.placeholder="Role";
+  fg2.appendChild(l2);fg2.appendChild(i2);
+  var btn=document.createElement("button");
+  btn.className="btn sm dan";btn.textContent="Del";btn.style.marginTop="16px";
+  btn.onclick=function(){rm(id);};
+  dv.appendChild(fg1);dv.appendChild(fg2);dv.appendChild(btn);
+  document.getElementById("cwrap").appendChild(dv);
+}
+function addPR(){
+  prC++;
+  var id="pr"+prC;
+  var dv=document.createElement("div");
+  dv.className="pr";dv.id=id;
+  var fg1=document.createElement("div");fg1.className="fg";
+  var l1=document.createElement("label");l1.textContent="Type";
+  var sel=document.createElement("select");sel.className="pt";
+  ["mobile","whatsapp","office","other"].forEach(function(t){
+    var opt=document.createElement("option");opt.value=t;
+    opt.textContent=t.charAt(0).toUpperCase()+t.slice(1);
+    sel.appendChild(opt);
+  });
+  fg1.appendChild(l1);fg1.appendChild(sel);
+  var fg2=document.createElement("div");fg2.className="fg";
+  var l2=document.createElement("label");l2.textContent="Number";
+  var i2=document.createElement("input");i2.type="tel";i2.className="pn";i2.placeholder="Number";
+  fg2.appendChild(l2);fg2.appendChild(i2);
+  var btn=document.createElement("button");
+  btn.className="btn sm dan";btn.textContent="Del";btn.style.marginTop="16px";
+  btn.onclick=function(){rm(id);};
+  dv.appendChild(fg1);dv.appendChild(fg2);dv.appendChild(btn);
+  document.getElementById("pwrap").appendChild(dv);
+}
 function rm(id){var el=document.getElementById(id);if(el)el.remove();}
 function setSS(n){supSV=n;document.querySelectorAll("#supstars .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});document.getElementById("sslbl").textContent=["","Poor","Fair","Good","Very good","Excellent"][n];}
 function addPhs(e,pid,arr){Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){arr.push(ev.target.result);var img=document.createElement("img");img.src=ev.target.result;img.className="thumb";document.getElementById(pid).appendChild(img);};r.readAsDataURL(f);});}
 
-function addIB(){var id=++ic;iPhs[id]=[];iStars[id]=0;iVer[id]=false;gCnt[id]=0;document.getElementById("ibempty").style.display="none";var today=new Date().toISOString().split("T")[0];var dv=document.createElement("div");dv.className="iblock g";dv.id="ib"+id;
-var h='<div class="ihead"><span class="inum">Item #'+id+'</span><div style="display:flex;gap:5px;align-items:center"><div class="mseg" id="ms'+id+'"><button onclick="setIM('+id+','gold',this)" class="ag">Gold</button><button onclick="setIM('+id+','silver',this)">Silver</button><button onclick="setIM('+id+','diamond',this)">Diamond</button></div><button class="btn sm dan" onclick="rmIB('+id+')">Del</button></div></div>';
-h+='<div class="frow"><div class="fg"><label>Sub-Master</label><div class="irow"><select id="sm'+id+'" onchange="liN('+id+')"><option value="">--</option></select><button class="btn sm ghost" onclick="addSM('+id+')">+</button></div></div><div class="fg"><label>Item name</label><div class="irow"><select id="it'+id+'"><option value="">--</option></select><button class="btn sm ghost" onclick="addIN('+id+')">+</button></div></div><div class="fg"><label>Date</label><input type="date" id="dt'+id+'" value="'+today+'"></div></div>';
-h+='<div id="gsf'+id+'"><div class="frow"><div class="fg"><label>Melting</label><div class="irow"><input type="number" id="mel'+id+'" placeholder="57" oninput="cT('+id+')"><button class="vbtn" id="vb'+id+'" onclick="togV('+id+')">Verify</button></div></div><div class="fg"><label>Wastage</label><input type="number" id="wst'+id+'" placeholder="8" oninput="cT('+id+')"></div><div class="fg"><label>Tunch</label><input type="number" id="tun'+id+'" placeholder="auto"></div><div class="fg"><label>Labour</label><input type="number" id="lab'+id+'" placeholder="1200"></div></div></div>';
-h+='<div id="df'+id+'" style="display:none"><div class="frow"><div class="fg"><label>Melting</label><div class="irow"><input type="number" id="dmel'+id+'" placeholder="57" oninput="cDT('+id+')"><button class="vbtn" id="dvb'+id+'" onclick="togDV('+id+')">Verify</button></div></div><div class="fg"><label>Wastage</label><input type="number" id="dwst'+id+'" placeholder="8" oninput="cDT('+id+')"></div><div class="fg"><label>Tunch</label><input type="number" id="dtun'+id+'" placeholder="auto"></div><div class="fg"><label>Labour</label><input type="number" id="dlab'+id+'" placeholder="500"></div></div><div style="display:flex;align-items:center;justify-content:space-between;margin:7px 0 4px"><div class="slbl" style="margin:0">Grades</div><button class="btn xs ghost" onclick="addGr('+id+')">+ Grade</button></div><div id="grd'+id+'"></div></div>';
-h+='<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:8px"><div><div class="slbl" style="margin-bottom:3px">Item rating</div><div class="stars" id="is'+id+'">';
-for(var n=1;n<=5;n++)h+='<span class="star sm" onclick="setIS('+id+','+n+')">&#9733;</span>';
-h+='</div></div></div>';
-h+='<div class="fg" style="margin-top:8px"><label>Notes</label><input type="text" id="ino'+id+'" placeholder="Notes"></div>';
-h+='<div style="margin-top:8px"><div class="slbl" style="margin-bottom:4px">Item images</div><div class="idrop" style="position:relative"><input type="file" accept="image/*" multiple onchange="addIPhs(event,'+id+')">&#128247; Add images</div><div class="thumbs" id="iph'+id+'"></div></div>';
-dv.innerHTML=h;document.getElementById("ibwrap").appendChild(dv);liSubs(id,"gold");}
+function addIB(){
+  var id=++ic;
+  iPhs[id]=[];iStars[id]=0;iVer[id]=false;gCnt[id]=0;
+  document.getElementById("ibempty").style.display="none";
+  var today=new Date().toISOString().split("T")[0];
+  var dv=document.createElement("div");
+  dv.className="iblock g";
+  dv.id="ib"+id;
+  var h = "";
+  h += "<div class=\"ihead\"><span class=\"inum\">Item #"+id+"</span>";
+  h += "<div style=\"display:flex;gap:5px;align-items:center\">";
+  h += "<div class=\"mseg\" id=\"ms"+id+"\">";
+  h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"gold\" class=\"ag\">Gold</button>";
+  h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"silver\">Silver</button>";
+  h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"diamond\">Diamond</button>";
+  h += "</div>";
+  h += "<button class=\"btn sm dan\" data-action=\"rmIB\" data-id=\"" + id + "\">Del</button>";
+  h += "</div></div>";
+
+  h += "<div class=\"frow\">";
+  h += "<div class=\"fg\"><label>Sub-Master</label><div class=\"irow\">";
+  h += "<select id=\"sm"+id+"\" data-action=\"liN\" data-id=\""+id+"\"><option value=\"\">--</option></select>";
+  h += "<button class=\"btn sm ghost\" data-action=\"addSM\" data-id=\""+id+"\">+</button></div></div>";
+  h += "<div class=\"fg\"><label>Item name</label><div class=\"irow\">";
+  h += "<select id=\"it"+id+"\"><option value=\"\">--</option></select>";
+  h += "<button class=\"btn sm ghost\" data-action=\"addIN\" data-id=\""+id+"\">+</button></div></div>";
+  h += "<div class=\"fg\"><label>Date</label><input type=\"date\" id=\"dt"+id+"\" value=\""+today+"\"></div>";
+  h += "</div>";
+
+  h += "<div id=\"gsf"+id+"\"><div class=\"frow\">";
+  h += "<div class=\"fg\"><label>Melting</label><div class=\"irow\">";
+  h += "<input type=\"number\" id=\"mel"+id+"\" placeholder=\"57\" data-action=\"cT\" data-id=\""+id+"\">";
+  h += "<button class=\"vbtn\" id=\"vb"+id+"\" data-action=\"togV\" data-id=\""+id+"\">Verify</button></div></div>";
+  h += "<div class=\"fg\"><label>Wastage</label><input type=\"number\" id=\"wst"+id+"\" placeholder=\"8\" data-action=\"cT\" data-id=\""+id+"\"></div>";
+  h += "<div class=\"fg\"><label>Tunch</label><input type=\"number\" id=\"tun"+id+"\" placeholder=\"auto\"></div>";
+  h += "<div class=\"fg\"><label>Labour</label><input type=\"number\" id=\"lab"+id+"\" placeholder=\"1200\"></div>";
+  h += "</div></div>";
+
+  h += "<div id=\"df"+id+"\" style=\"display:none\"><div class=\"frow\">";
+  h += "<div class=\"fg\"><label>Melting</label><div class=\"irow\">";
+  h += "<input type=\"number\" id=\"dmel"+id+"\" placeholder=\"57\" data-action=\"cDT\" data-id=\""+id+"\">";
+  h += "<button class=\"vbtn\" id=\"dvb"+id+"\" data-action=\"togDV\" data-id=\""+id+"\">Verify</button></div></div>";
+  h += "<div class=\"fg\"><label>Wastage</label><input type=\"number\" id=\"dwst"+id+"\" placeholder=\"8\" data-action=\"cDT\" data-id=\""+id+"\"></div>";
+  h += "<div class=\"fg\"><label>Tunch</label><input type=\"number\" id=\"dtun"+id+"\" placeholder=\"auto\"></div>";
+  h += "<div class=\"fg\"><label>Labour</label><input type=\"number\" id=\"dlab"+id+"\" placeholder=\"500\"></div>";
+  h += "</div>";
+  h += "<div style=\"display:flex;align-items:center;justify-content:space-between;margin:7px 0 4px\">";
+  h += "<div class=\"slbl\" style=\"margin:0\">Grades</div>";
+  h += "<button class=\"btn xs ghost\" data-action=\"addGr\" data-id=\""+id+"\">+ Grade</button></div>";
+  h += "<div id=\"grd"+id+"\"></div></div>";
+
+  h += "<div style=\"display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:8px\">";
+  h += "<div><div class=\"slbl\" style=\"margin-bottom:3px\">Item rating</div>";
+  h += "<div class=\"stars\" id=\"is"+id+"\">";
+  for(var n=1;n<=5;n++){
+    h += "<span class=\"star sm\" data-action=\"setIS\" data-id=\""+id+"\" data-n=\""+n+"\">&#9733;</span>";
+  }
+  h += "</div></div></div>";
+
+  h += "<div class=\"fg\" style=\"margin-top:8px\"><label>Notes</label><input type=\"text\" id=\"ino"+id+"\" placeholder=\"Notes\"></div>";
+
+  h += "<div style=\"margin-top:8px\"><div class=\"slbl\" style=\"margin-bottom:4px\">Item images</div>";
+  h += "<div class=\"idrop\"><input type=\"file\" accept=\"image/*\" multiple data-action=\"addIPhs\" data-id=\""+id+"\">&#128247; Add images</div>";
+  h += "<div class=\"thumbs\" id=\"iph"+id+"\"></div></div>";
+
+  dv.innerHTML = h;
+  document.getElementById("ibwrap").appendChild(dv);
+
+  // Wire up all data-action elements (avoids quote-escaping issues entirely)
+  wireItemBlockEvents(dv);
+
+  liSubs(id,"gold");
+}
+
+function wireItemBlockEvents(container){
+  container.querySelectorAll("[data-action]").forEach(function(el){
+    var action = el.getAttribute("data-action");
+    var id = parseInt(el.getAttribute("data-id"));
+    if(action==="setIM"){
+      var m = el.getAttribute("data-m");
+      el.onclick=function(){ setIM(id, m, el); };
+    } else if(action==="rmIB"){
+      el.onclick=function(){ rmIB(id); };
+    } else if(action==="liN"){
+      el.onchange=function(){ liN(id); };
+    } else if(action==="addSM"){
+      el.onclick=function(){ addSM(id); };
+    } else if(action==="addIN"){
+      el.onclick=function(){ addIN(id); };
+    } else if(action==="cT"){
+      el.oninput=function(){ cT(id); };
+    } else if(action==="togV"){
+      el.onclick=function(){ togV(id); };
+    } else if(action==="cDT"){
+      el.oninput=function(){ cDT(id); };
+    } else if(action==="togDV"){
+      el.onclick=function(){ togDV(id); };
+    } else if(action==="addGr"){
+      el.onclick=function(){ addGr(id); };
+    } else if(action==="setIS"){
+      var n = parseInt(el.getAttribute("data-n"));
+      el.onclick=function(){ setIS(id, n); };
+    } else if(action==="addIPhs"){
+      el.onchange=function(e){ addIPhs(e, id); };
+    }
+  });
+}
 
 function rmIB(id){var el=document.getElementById("ib"+id);if(el)el.remove();delete iPhs[id];delete iStars[id];delete iVer[id];if(!document.getElementById("ibwrap").children.length)document.getElementById("ibempty").style.display="block";}
 function setIM(id,m,btn){document.getElementById("ib"+id).className="iblock "+m[0];document.querySelectorAll("#ms"+id+" button").forEach(function(b){b.className="";});btn.className=m==="gold"?"ag":m==="silver"?"as":"ad";document.getElementById("gsf"+id).style.display=m==="diamond"?"none":"block";document.getElementById("df"+id).style.display=m==="diamond"?"block":"none";liSubs(id,m);}
@@ -518,14 +717,104 @@ function togV(id){iVer[id]=!iVer[id];var b=document.getElementById("vb"+id);b.cl
 function togDV(id){var k="d"+id;iVer[k]=!iVer[k];var b=document.getElementById("dvb"+id);b.classList.toggle("ok",iVer[k]);b.textContent=iVer[k]?"Verified":"Verify";}
 function setIS(id,n){iStars[id]=n;document.querySelectorAll("#is"+id+" .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});}
 function addIPhs(e,id){Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){iPhs[id].push({src:ev.target.result,stars:0});var img=document.createElement("img");img.src=ev.target.result;img.className="thumb";document.getElementById("iph"+id).appendChild(img);};r.readAsDataURL(f);});}
-function addGr(iid){var gi=++gCnt[iid];var gk=iid+"_"+gi;gPhs[gk]=[];var today=new Date().toISOString().split("T")[0];var dv=document.createElement("div");dv.className="gblock";dv.id="gb"+iid+"-"+gi;var h='<div style="display:flex;justify-content:space-between;margin-bottom:7px"><span style="font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase">Grade #'+gi+'</span><button class="btn xs dan" onclick="rm('gb'+iid+'-'+gi+'')">Del</button></div>';h+='<div class="frow"><div class="fg"><label>Colour</label><input type="text" class="gcol" placeholder="EF,GH"></div><div class="fg"><label>Clarity</label><input type="text" class="gclar" placeholder="VVS,VS"></div><div class="fg"><label>Weight range</label><input type="text" class="gwt" placeholder="Star,Maile"></div><div class="fg"><label>Price</label><input type="number" class="gprc" placeholder="Price"></div><div class="fg"><label>Date</label><input type="date" class="gdt" value="'+today+'"></div><div class="fg"><label>Notes</label><input type="text" class="gnot" placeholder="Notes"></div></div>';h+='<div class="idrop" style="padding:7px"><input type="file" accept="image/*" multiple onchange="addGPhs(event,'+iid+','+gi+')">&#128247; Grade images</div><div class="thumbs" id="gph'+iid+'-'+gi+'"></div>';dv.innerHTML=h;document.getElementById("grd"+iid).appendChild(dv);}
+function addGr(iid){
+  var gi=++gCnt[iid];
+  var gk=iid+"_"+gi;
+  gPhs[gk]=[];
+  var today=new Date().toISOString().split("T")[0];
+  var dv=document.createElement("div");
+  dv.className="gblock";
+  dv.id="gb"+iid+"-"+gi;
+
+  var h = "";
+  h += "<div style=\"display:flex;justify-content:space-between;margin-bottom:7px\">";
+  h += "<span style=\"font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase\">Grade #"+gi+"</span>";
+  h += "<button class=\"btn xs dan\" data-action=\"rmGrade\" data-gid=\""+dv.id+"\">Del</button></div>";
+  h += "<div class=\"frow\">";
+  h += "<div class=\"fg\"><label>Colour</label><input type=\"text\" class=\"gcol\" placeholder=\"EF,GH\"></div>";
+  h += "<div class=\"fg\"><label>Clarity</label><input type=\"text\" class=\"gclar\" placeholder=\"VVS,VS\"></div>";
+  h += "<div class=\"fg\"><label>Weight range</label><input type=\"text\" class=\"gwt\" placeholder=\"Star,Maile\"></div>";
+  h += "<div class=\"fg\"><label>Price</label><input type=\"number\" class=\"gprc\" placeholder=\"Price\"></div>";
+  h += "<div class=\"fg\"><label>Date</label><input type=\"date\" class=\"gdt\" value=\""+today+"\"></div>";
+  h += "<div class=\"fg\"><label>Notes</label><input type=\"text\" class=\"gnot\" placeholder=\"Notes\"></div>";
+  h += "</div>";
+  h += "<div class=\"idrop\" style=\"padding:7px\"><input type=\"file\" accept=\"image/*\" multiple data-action=\"addGPhs\" data-iid=\""+iid+"\" data-gi=\""+gi+"\">&#128247; Grade images</div>";
+  h += "<div class=\"thumbs\" id=\"gph"+iid+"-"+gi+"\"></div>";
+
+  dv.innerHTML = h;
+  document.getElementById("grd"+iid).appendChild(dv);
+
+  // Wire events
+  var delBtn = dv.querySelector("[data-action=\"rmGrade\"]");
+  if(delBtn) delBtn.onclick = function(){ rm(dv.id); };
+  var fileInput = dv.querySelector("[data-action=\"addGPhs\"]");
+  if(fileInput) fileInput.onchange = function(e){ addGPhs(e, iid, gi); };
+}
+
 function addGPhs(e,iid,gi){var gk=iid+"_"+gi;if(!gPhs[gk])gPhs[gk]=[];Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){gPhs[gk].push({src:ev.target.result,stars:0});var img=document.createElement("img");img.src=ev.target.result;img.className="thumb";document.getElementById("gph"+iid+"-"+gi).appendChild(img);};r.readAsDataURL(f);});}
 
 function colSup(){var cs=[],ps=[];document.querySelectorAll("#cwrap .cr").forEach(function(r){var n=r.querySelector(".cn").value.trim();var ro=r.querySelector(".cro").value.trim();if(n)cs.push({name:n,role:ro});});document.querySelectorAll("#pwrap .pr").forEach(function(r){var n=r.querySelector(".pn").value.trim();var t=r.querySelector(".pt").value;if(n)ps.push({type:t,number:n});});return{firm:document.getElementById("sfirm").value.trim(),contacts:cs,phones:ps,address:document.getElementById("saddr").value.trim(),notes:document.getElementById("snotes").value.trim(),stars:supSV,photos:[].concat(shopPhs),cardImages:[sides.front&&sides.front.src,sides.back&&sides.back.src].filter(Boolean)};}
 function colItems(){var items=[];document.querySelectorAll("[id^='ib']").forEach(function(bl){var id=parseInt(bl.id.replace("ib",""));if(isNaN(id))return;var m=getIM(id);var isD=m==="diamond";var it={master:m,submaster:document.getElementById("sm"+id).value,itemName:document.getElementById("it"+id).value,date:document.getElementById("dt"+id).value,notes:document.getElementById("ino"+id).value,stars:iStars[id]||0,images:[].concat(iPhs[id]||[])};if(!isD){it.melting=document.getElementById("mel"+id).value;it.wastage=document.getElementById("wst"+id).value;it.tunch=document.getElementById("tun"+id).value;it.labour=document.getElementById("lab"+id).value;it.meltingVerified=iVer[id]||false;}else{it.melting=document.getElementById("dmel"+id).value;it.wastage=document.getElementById("dwst"+id).value;it.tunch=document.getElementById("dtun"+id).value;it.labour=document.getElementById("dlab"+id).value;it.meltingVerified=iVer["d"+id]||false;var grades=[];document.querySelectorAll("#grd"+id+" .gblock").forEach(function(gb,gi){var gk=id+"_"+(gi+1);grades.push({colour:gb.querySelector(".gcol").value,clarity:gb.querySelector(".gclar").value,weight:gb.querySelector(".gwt").value,price:gb.querySelector(".gprc").value,date:gb.querySelector(".gdt").value,notes:gb.querySelector(".gnot").value,images:[].concat(gPhs[gk]||[])});});it.grades=grades;}items.push(it);});return items;}
 
 async function saveAll(){var sup=colSup();if(!sup.firm&&!sup.contacts.length){toast("Add supplier name or contact","err");return;}var items=colItems();var entry={id:String(Date.now()),supplier:sup,items:items,savedAt:new Date().toISOString()};DB.entries.push(entry);await saveDr();toast("Saved: "+(sup.firm||(sup.contacts[0]||{}).name||"Entry")+" - "+items.length+" item(s)","ok");setTimeout(clearAll,900);}
-function clearAll(){supSV=0;shopPhs=[];sides={front:null,back:null};ic=0;crC=0;prC=0;iPhs={};iStars={};iVer={};gCnt={};gPhs={};["sfirm","saddr","snotes"].forEach(function(id){var el=document.getElementById(id);if(el)el.value="";});document.querySelectorAll("#supstars .star").forEach(function(s){s.classList.remove("lit");});document.getElementById("sslbl").textContent="Tap to rate";document.getElementById("shopprev").innerHTML="";["front","back"].forEach(function(w){document.getElementById(w==="front"?"fbox":"bbox").classList.remove("done");document.getElementById(w==="front"?"fprev":"bprev").style.display="none";document.getElementById(w==="front"?"flbl":"blbl").textContent=w==="front"?"Front side":"Back side";document.getElementById(w==="front"?"fhint":"bhint").textContent=w==="front"?"Firm name, logo":"Address, numbers";document.getElementById(w==="front"?"ifr":"ibk").value="";});var sb=document.getElementById("scanbtn");sb.disabled=true;sb.style.opacity=".45";document.getElementById("cwrap").innerHTML='<div class="cr" id="cr0"><div class="fg"><label>Name</label><input type="text" class="cn" placeholder="Prateek Gupta"></div><div class="fg"><label>Role</label><input type="text" class="cro" placeholder="Owner"></div><button class="btn sm dan" onclick="rm('cr0')" style="margin-top:16px">Del</button></div>';document.getElementById("pwrap").innerHTML='<div class="pr" id="pr0"><div class="fg"><label>Type</label><select class="pt"><option value="mobile">Mobile</option><option value="whatsapp">WhatsApp</option><option value="office">Office</option><option value="other">Other</option></select></div><div class="fg"><label>Number</label><input type="tel" class="pn" placeholder="9968544652"></div><button class="btn sm dan" onclick="rm('pr0')" style="margin-top:16px">Del</button></div>';document.getElementById("ibwrap").innerHTML="";document.getElementById("ibempty").style.display="block";}
+function clearAll(){
+  supSV=0;shopPhs=[];sides={front:null,back:null};
+  ic=0;crC=0;prC=0;iPhs={};iStars={};iVer={};gCnt={};gPhs={};
+  ["sfirm","saddr","snotes"].forEach(function(id){var el=document.getElementById(id);if(el)el.value="";});
+  document.querySelectorAll("#supstars .star").forEach(function(s){s.classList.remove("lit");});
+  document.getElementById("sslbl").textContent="Tap to rate";
+  document.getElementById("shopprev").innerHTML="";
+  ["front","back"].forEach(function(w){
+    document.getElementById(w==="front"?"fbox":"bbox").classList.remove("done");
+    document.getElementById(w==="front"?"fprev":"bprev").style.display="none";
+    document.getElementById(w==="front"?"flbl":"blbl").textContent=w==="front"?"Front side":"Back side";
+    document.getElementById(w==="front"?"fhint":"bhint").textContent=w==="front"?"Firm name, logo":"Address, numbers";
+    document.getElementById(w==="front"?"ifr":"ibk").value="";
+  });
+  var sb=document.getElementById("scanbtn");
+  sb.disabled=true;sb.style.opacity=".45";
+
+  // Reset contacts wrap using DOM methods
+  var cwrap=document.getElementById("cwrap");
+  cwrap.innerHTML="";
+  var cr0=document.createElement("div");cr0.className="cr";cr0.id="cr0";
+  var cfg1=document.createElement("div");cfg1.className="fg";
+  var cl1=document.createElement("label");cl1.textContent="Name";
+  var ci1=document.createElement("input");ci1.type="text";ci1.className="cn";ci1.placeholder="Prateek Gupta";
+  cfg1.appendChild(cl1);cfg1.appendChild(ci1);
+  var cfg2=document.createElement("div");cfg2.className="fg";
+  var cl2=document.createElement("label");cl2.textContent="Role";
+  var ci2=document.createElement("input");ci2.type="text";ci2.className="cro";ci2.placeholder="Owner";
+  cfg2.appendChild(cl2);cfg2.appendChild(ci2);
+  var cbtn=document.createElement("button");cbtn.className="btn sm dan";cbtn.textContent="Del";cbtn.style.marginTop="16px";
+  cbtn.onclick=function(){rm("cr0");};
+  cr0.appendChild(cfg1);cr0.appendChild(cfg2);cr0.appendChild(cbtn);
+  cwrap.appendChild(cr0);
+
+  // Reset phones wrap using DOM methods
+  var pwrap=document.getElementById("pwrap");
+  pwrap.innerHTML="";
+  var pr0=document.createElement("div");pr0.className="pr";pr0.id="pr0";
+  var pfg1=document.createElement("div");pfg1.className="fg";
+  var pl1=document.createElement("label");pl1.textContent="Type";
+  var psel=document.createElement("select");psel.className="pt";
+  ["mobile","whatsapp","office","other"].forEach(function(t){
+    var opt=document.createElement("option");opt.value=t;opt.textContent=t.charAt(0).toUpperCase()+t.slice(1);
+    psel.appendChild(opt);
+  });
+  pfg1.appendChild(pl1);pfg1.appendChild(psel);
+  var pfg2=document.createElement("div");pfg2.className="fg";
+  var pl2=document.createElement("label");pl2.textContent="Number";
+  var pi2=document.createElement("input");pi2.type="tel";pi2.className="pn";pi2.placeholder="9968544652";
+  pfg2.appendChild(pl2);pfg2.appendChild(pi2);
+  var pbtn=document.createElement("button");pbtn.className="btn sm dan";pbtn.textContent="Del";pbtn.style.marginTop="16px";
+  pbtn.onclick=function(){rm("pr0");};
+  pr0.appendChild(pfg1);pr0.appendChild(pfg2);pr0.appendChild(pbtn);
+  pwrap.appendChild(pr0);
+
+  document.getElementById("ibwrap").innerHTML="";
+  document.getElementById("ibempty").style.display="block";
+}
 
 function lcSub(){var m=document.getElementById("cm").value;var s=document.getElementById("csm");s.innerHTML='<option value="">All</option>';var sms=m?(DB.subs[m]||[]):[].concat(DB.subs.gold||[]).concat(DB.subs.silver||[]).concat(DB.subs.diamond||[]).filter(function(v,i,a){return a.indexOf(v)===i;});sms.forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});lcIt();}
 function lcIt(){var m=document.getElementById("cm").value;var sm=document.getElementById("csm").value;var s=document.getElementById("ci");s.innerHTML='<option value="">All</option>';var ns=[];var ms=m?[m]:["gold","silver","diamond"];ms.forEach(function(mx){var k=mx+"_"+sm;(DB.items[k]||[]).forEach(function(n){if(ns.indexOf(n)<0)ns.push(n);});});ns.forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});}
@@ -542,7 +831,124 @@ function setVS(k,v){viewSt[k]=v;renderCat();}
 
 function buildCatData(){var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;tree[sm][itN].push({src:src,stars:stars,itemName:itN,submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;tree[sm][itN].push({src:src,stars:stars,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});Object.keys(tree).forEach(function(sm){Object.keys(tree[sm]).forEach(function(itN){var arr=tree[sm][itN];if(catSort==="date_asc")arr.sort(function(a,b){return new Date(a.date||0)-new Date(b.date||0);});else if(catSort==="date_desc")arr.sort(function(a,b){return new Date(b.date||0)-new Date(a.date||0);});else if(catSort==="stars_asc")arr.sort(function(a,b){return(a.stars||0)-(b.stars||0);});else if(catSort==="stars_desc")arr.sort(function(a,b){return(b.stars||0)-(a.stars||0);});});});return tree;}
 
-function renderCat(){var tree=buildCatData();var body=document.getElementById("catbody");if(!Object.keys(tree).length){body.innerHTML='<div class="empty"><div class="eicon">?</div>No images yet. Add items with photos in Add Entry.</div>';return;}body.innerHTML=Object.entries(tree).map(function(smKV){var sm=smKV[0],items=smKV[1];var smKey=(catMaster||"all")+"_"+sm;var totalI=Object.values(items).reduce(function(s,a){return s+a.length;},0);var iCount=Object.keys(items).length;var itmHTML=Object.entries(items).map(function(itKV){var itN=itKV[0],imgs=itKV[1];var key=smKey+"_"+itN;var view=getView(key);var allSrcs=imgs.map(function(i){return i.src;});var allMeta=imgs;function makeCard(img,idx,scroll){var st=img.stars||0;var stHTML=st>0?'<div class="imgstars">'+'<span class="star xs lit">*</span>'.repeat(st)+"</div>":"";var wa='<button class="wabtn" onclick="event.stopPropagation();waImg(this.closest('[data-src]').dataset.src,''+esc(itN)+'')">WA</button>';if(scroll)return'<div class="sitem" data-src="'+img.src+'" onclick="openLB('+JSON.stringify(allSrcs)+','+JSON.stringify(allMeta)+','+idx+')"><img src="'+img.src+'" loading="lazy">'+stHTML+'<button class="wabtn" onclick="event.stopPropagation();waImg(''+img.src.replace(/'/g,"\'")+"','"+esc(itN)+'')">WA</button><div class="scap">'+esc(img.supName||"")+"</div></div>";return'<div class="gitem" onclick="openLB('+JSON.stringify(allSrcs)+','+JSON.stringify(allMeta)+','+idx+')"><img src="'+img.src+'" loading="lazy">'+stHTML+'<button class="wabtn" onclick="event.stopPropagation();waImg(''+img.src.replace(/'/g,"\'")+"','"+esc(itN)+'')">WA</button></div>';}var imgsHTML=view==="scroll"?'<div class="iscroll">'+imgs.map(function(img,i){return makeCard(img,i,true);}).join("")+"</div>":'<div class="igrid '+(view==="grid1"?"g1":"")+'">'+imgs.map(function(img,i){return makeCard(img,i,false);}).join("")+"</div>";return'<div class="irow2"><div class="ilabel"><div><div class="iname">'+esc(itN)+'</div><div style="font-size:11px;color:var(--txt3)">'+imgs.length+" image"+(imgs.length>1?"s":"")+" - tap to zoom"+'</div></div><div class="iacts"><div class="vtog"><button class="vtbtn '+(view==="grid2"?"active":"")+'" onclick="setVS(''+key+'','grid2')">2x</button><button class="vtbtn '+(view==="grid1"?"active":"")+'" onclick="setVS(''+key+'','grid1')">1x</button><button class="vtbtn '+(view==="scroll"?"active":"")+'" onclick="setVS(''+key+'','scroll')">Scroll</button></div><button class="btn xs" onclick="shareLnk(''+esc(sm)+"','"+esc(itN)+'')">&#128279;</button><button class="btn wa xs" onclick="waItem(''+esc(sm)+"','"+esc(itN)+'')">WA</button></div></div>'+imgsHTML+"</div>";}).join('<div style="height:1px;background:var(--bdr);margin:9px 0"></div>');return'<div class="scard"><div class="schead" onclick="togSec('sb'+smKey+'','sa'+smKey+'')"><div><div class="sctitle"><span class="badge '+(catMaster||"gold")+'" style="margin-right:5px">'+(catMaster||"all")+"</span>"+esc(sm)+'</div><div class="scmeta">'+iCount+" item"+(iCount>1?"s":"")+" - "+totalI+" image"+(totalI>1?"s":"")+'</div></div><div style="display:flex;align-items:center;gap:5px"><button class="btn xs" onclick="event.stopPropagation();shareLnkSM(''+esc(sm)+'')">&#128279;</button><span id="sa'+smKey+'">^</span></div></div><div class="scbody" id="sb'+smKey+'">'+itmHTML+"</div></div>";}).join("");}
+function renderCat(){
+  var tree=buildCatData();
+  var body=document.getElementById("catbody");
+  if(!Object.keys(tree).length){
+    body.innerHTML="";
+    var emptyDiv=document.createElement("div");emptyDiv.className="empty";
+    emptyDiv.innerHTML='<div class="eicon">?</div>No images yet. Add items with photos in Add Entry.';
+    body.appendChild(emptyDiv);
+    return;
+  }
+  body.innerHTML="";
+
+  Object.entries(tree).forEach(function(smKV){
+    var sm=smKV[0], items=smKV[1];
+    var smKey=(catMaster||"all")+"_"+sm;
+    var totalI=Object.values(items).reduce(function(s,a){return s+a.length;},0);
+    var iCount=Object.keys(items).length;
+
+    var scard=document.createElement("div");scard.className="scard";
+
+    var schead=document.createElement("div");schead.className="schead";
+    var scheadLeft=document.createElement("div");
+    scheadLeft.innerHTML='<div class="sctitle"><span class="badge '+(catMaster||"gold")+'">'+(catMaster||"all")+'</span> '+esc(sm)+'</div><div class="scmeta">'+iCount+' item'+(iCount>1?"s":"")+' - '+totalI+' image'+(totalI>1?"s":"")+'</div>';
+    var scheadRight=document.createElement("div");
+    scheadRight.style.cssText="display:flex;align-items:center;gap:5px";
+    var shareBtn=document.createElement("button");shareBtn.className="btn xs";shareBtn.innerHTML="&#128279;";
+    shareBtn.onclick=function(e){e.stopPropagation();shareLnkSM(sm);};
+    var arrowSpan=document.createElement("span");arrowSpan.textContent="^";arrowSpan.id="sa"+smKey;
+    scheadRight.appendChild(shareBtn);scheadRight.appendChild(arrowSpan);
+    schead.appendChild(scheadLeft);schead.appendChild(scheadRight);
+    var scbody=document.createElement("div");scbody.className="scbody";scbody.id="sb"+smKey;
+    schead.onclick=function(){togSec("sb"+smKey,"sa"+smKey);};
+
+    Object.entries(items).forEach(function(itKV, itIdx){
+      var itN=itKV[0], imgs=itKV[1];
+      var key=smKey+"_"+itN;
+      var view=getView(key);
+      var allSrcs=imgs.map(function(i){return i.src;});
+      var allMeta=imgs;
+
+      var irow=document.createElement("div");irow.className="irow2";
+      var ilabel=document.createElement("div");ilabel.className="ilabel";
+      var ilabelLeft=document.createElement("div");
+      ilabelLeft.innerHTML='<div class="iname">'+esc(itN)+'</div><div style="font-size:11px;color:var(--txt3)">'+imgs.length+' image'+(imgs.length>1?"s":"")+' - tap to zoom</div>';
+      var iacts=document.createElement("div");iacts.className="iacts";
+
+      var vtog=document.createElement("div");vtog.className="vtog";
+      ["grid2","grid1","scroll"].forEach(function(v){
+        var b=document.createElement("button");
+        b.className="vtbtn"+(view===v?" active":"");
+        b.textContent=v==="grid2"?"2x":v==="grid1"?"1x":"Scroll";
+        b.onclick=function(){setVS(key,v);};
+        vtog.appendChild(b);
+      });
+      iacts.appendChild(vtog);
+
+      var lnkBtn=document.createElement("button");lnkBtn.className="btn xs";lnkBtn.innerHTML="&#128279;";
+      lnkBtn.onclick=function(){shareLnk(sm,itN);};
+      iacts.appendChild(lnkBtn);
+
+      var waBtn=document.createElement("button");waBtn.className="btn wa xs";waBtn.textContent="WA";
+      waBtn.onclick=function(){waItem(sm,itN);};
+      iacts.appendChild(waBtn);
+
+      ilabel.appendChild(ilabelLeft);ilabel.appendChild(iacts);
+      irow.appendChild(ilabel);
+
+      var imgWrap=document.createElement("div");
+      imgWrap.className = view==="scroll" ? "iscroll" : ("igrid"+(view==="grid1"?" g1":""));
+
+      imgs.forEach(function(img, idx){
+        var card=document.createElement("div");
+        card.className = view==="scroll" ? "sitem" : "gitem";
+        card.setAttribute("data-src", img.src);
+
+        var imgEl=document.createElement("img");
+        imgEl.src=img.src;imgEl.loading="lazy";
+        card.appendChild(imgEl);
+
+        var st=img.stars||0;
+        if(st>0){
+          var starsDiv=document.createElement("div");starsDiv.className="imgstars";
+          for(var si=0;si<st;si++){
+            var s=document.createElement("span");s.className="star xs lit";s.textContent="*";
+            starsDiv.appendChild(s);
+          }
+          card.appendChild(starsDiv);
+        }
+
+        var wb=document.createElement("button");wb.className="wabtn";wb.textContent="WA";
+        wb.onclick=function(e){e.stopPropagation();waImg(img.src,itN);};
+        card.appendChild(wb);
+
+        if(view==="scroll"){
+          var scap=document.createElement("div");scap.className="scap";scap.textContent=img.supName||"";
+          card.appendChild(scap);
+        }
+
+        card.onclick=function(){openLB(allSrcs, allMeta, idx);};
+        imgWrap.appendChild(card);
+      });
+
+      irow.appendChild(imgWrap);
+      scbody.appendChild(irow);
+
+      if(itIdx < Object.keys(items).length - 1){
+        var divider=document.createElement("div");
+        divider.style.cssText="height:1px;background:var(--bdr);margin:9px 0";
+        scbody.appendChild(divider);
+      }
+    });
+
+    scard.appendChild(schead);
+    scard.appendChild(scbody);
+    body.appendChild(scard);
+  });
+}
+
 function togSec(bid,aid){var b=document.getElementById(bid),a=document.getElementById(aid),h=b.style.display==="none";b.style.display=h?"block":"none";a.textContent=h?"^":"v";}
 
 function openLB(srcs,metas,idx){lbImgs=srcs;lbMeta=metas;lbIdx=idx;document.getElementById("lb").classList.add("open");document.body.style.overflow="hidden";loadLBImg(idx);buildStrip(srcs,idx);showHint("Pinch to zoom - Double-tap to fit");}
@@ -568,19 +974,11 @@ cv.addEventListener("wheel",function(e){e.preventDefault();zstep(e.deltaY<0?1.15
 document.addEventListener("keydown",function(e){if(!document.getElementById("lb").classList.contains("open"))return;if(e.key==="Escape")closeLB();if(e.key==="ArrowRight"&&lbIdx<lbImgs.length-1)loadLBImg(lbIdx+1);if(e.key==="ArrowLeft"&&lbIdx>0)loadLBImg(lbIdx-1);if(e.key==="+"||e.key==="=")zstep(1.3);if(e.key==="-")zstep(0.77);if(e.key==="0")zreset();});
 
 function waImg(src,title){if(navigator.share){fetch(src).then(function(r){return r.blob();}).then(function(blob){var f=new File([blob],(title||"jewellery")+".jpg",{type:"image/jpeg"});if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:title||"",text:title||""}).then(function(){toast("Shared","ok");}).catch(function(){waFB(title);});}else waFB(title);}).catch(function(){waFB(title);});}else waFB(title);}
-function waFB(t){window.open("https://wa.me/?text="+encodeURIComponent("*"+(t||"Jewellery image")+"*
-
-Sent from Jewellery Price Book"),"_blank");toast("WhatsApp opened","ok");}
+function waFB(t){window.open("https://wa.me/?text="+encodeURIComponent("*"+(t||"Jewellery image")+"*\n\nSent from Jewellery Price Book"),"_blank");toast("WhatsApp opened","ok");}
 function waShareCur(){waImg(lbImgs[lbIdx],document.getElementById("lbtitle").textContent);}
 function dlCur(){var a=document.createElement("a");a.href=lbImgs[lbIdx];a.download=(document.getElementById("lbtitle").textContent||"image")+".jpg";document.body.appendChild(a);a.click();a.remove();}
-function waItem(sm,itN){var tree=buildCatData();var imgs=(tree[sm]||{})[itN]||[];var msg="*"+itN+"* ("+sm+")
-"+imgs.length+" images
-
-Sent from Jewellery Price Book";window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");}
-function waAll(){var tree=buildCatData();var tot=Object.values(tree).reduce(function(s,i){return s+Object.values(i).reduce(function(s2,a){return s2+a.length;},0);},0);window.open("https://wa.me/?text="+encodeURIComponent("*Jewellery Catalogue*
-"+tot+" images
-
-Sent from Jewellery Price Book"),"_blank");}
+function waItem(sm,itN){var tree=buildCatData();var imgs=(tree[sm]||{})[itN]||[];var msg="*"+itN+"* ("+sm+")"+String.fromCharCode(10)+imgs.length+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book";window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");}
+function waAll(){var tree=buildCatData();var tot=Object.values(tree).reduce(function(s,i){return s+Object.values(i).reduce(function(s2,a){return s2+a.length;},0);},0);window.open("https://wa.me/?text="+encodeURIComponent("*Jewellery Catalogue*"+String.fromCharCode(10)+tot+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book"),"_blank");}
 function openLM(desc,params){curLnk=location.href.split("?")[0]+params;document.getElementById("lmdesc").textContent=desc;document.getElementById("lmurl").textContent=curLnk;document.getElementById("lnkmbg").classList.add("open");}
 function closeLM(){document.getElementById("lnkmbg").classList.remove("open");}
 function shareLnk(sm,itN){openLM("Share "+itN+" catalogue","?cat="+encodeURIComponent(catMaster)+"&sm="+encodeURIComponent(sm)+"&item="+encodeURIComponent(itN));}
@@ -588,23 +986,133 @@ function shareLnkSM(sm){openLM("Share "+sm+" section","?cat="+encodeURIComponent
 function shareFull(){openLM("Share full catalogue","?cat="+encodeURIComponent(catMaster));}
 function copyLnk(){if(navigator.clipboard){navigator.clipboard.writeText(curLnk).then(function(){toast("Copied","ok");}).catch(fbCopy);}else fbCopy();}
 function fbCopy(){var ta=document.createElement("textarea");ta.value=curLnk;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();toast("Copied","ok");}
-function sendLnkWA(){window.open("https://wa.me/?text="+encodeURIComponent("Check out this jewellery catalogue:
-"+curLnk),"_blank");}
+function sendLnkWA(){window.open("https://wa.me/?text="+encodeURIComponent("Check out this jewellery catalogue:"+String.fromCharCode(10)+curLnk),"_blank");}
 
-function renderSup(){var q=(document.getElementById("supsrch")||{value:""}).value.toLowerCase();var c=document.getElementById("suplist");var sups=[];var seen={};DB.entries.forEach(function(e){var s=e.supplier||{};var k=s.firm||((s.contacts||[])[0]||{}).name||"?";if(!seen[k]){seen[k]=true;sups.push(Object.assign({},s));}});var f=sups.filter(function(s){if(!q)return true;return(s.firm||"").toLowerCase().indexOf(q)>=0||(s.contacts||[]).some(function(c){return c.name.toLowerCase().indexOf(q)>=0;})||(s.phones||[]).some(function(p){return p.number.indexOf(q)>=0;});});if(!f.length){c.innerHTML='<div class="empty"><div class="eicon">?</div>No suppliers yet</div>';return;}var phC={mobile:"ph-mob",whatsapp:"ph-wa",office:"ph-off",other:"ph-oth"};c.innerHTML=f.map(function(s){var ini=(s.firm||((s.contacts||[])[0]||{}).name||"?").substring(0,2).toUpperCase();return'<div class="supcard"><div style="display:flex;align-items:flex-start;gap:9px"><div class="supav">'+ini+'</div><div style="flex:1;min-width:0"><div style="font-weight:600">'+esc(s.firm||"--")+'</div><div style="font-size:11px;color:var(--txt3)">'+esc(s.address||"")+'</div><div style="color:var(--gold);font-size:11px;margin-top:2px">'+"*".repeat(s.stars||0)+"o".repeat(5-(s.stars||0))+'</div></div></div><div style="margin-top:9px">'+(s.contacts||[]).map(function(ct){return'<div style="font-size:12px;display:flex;align-items:center;gap:5px;padding:2px 0"><span style="font-weight:500">'+esc(ct.name)+"</span>"+(ct.role?'<span style="color:var(--txt3)">- '+esc(ct.role)+"</span>":"")+"</div>";}).join("")+'</div><div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">'+(s.phones||[]).map(function(p){return'<span class="phbadge '+(phC[p.type]||"ph-oth")+'">'+p.type+'</span><span style="font-size:12px;color:var(--txt3);margin-right:5px">'+esc(p.number)+"</span>";}).join("")+"</div>"+(s.notes?'<div style="font-size:11px;color:var(--txt3);margin-top:5px">'+esc(s.notes)+"</div>":"")+((s.cardImages&&s.cardImages.length)?'<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">'+s.cardImages.map(function(ci,ci_i){return'<div style="position:relative;display:inline-block"><img src="'+ci+'" style="width:110px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--bdr);cursor:pointer" onclick="openLB([\''+ci+'\'],[ {itemName:'+(ci_i===0?'\'Card Front\'':'\'Card Back\'')+',supName:\''+esc(s.firm||"")+'\',date:\'\',tunch:\'\',wastage:\'\',melting:\'\',labour:\'\',meltingVerified:false,stars:0}],0)"><div style="position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px">'+( ci_i===0?"FRONT":"BACK")+'</div></div>';}).join("")+'</div>':"")+'</div>';}).join("");}
+function renderSup(){
+  var q=(document.getElementById("supsrch")||{value:""}).value.toLowerCase();
+  var c=document.getElementById("suplist");
+  var sups=[];
+  var seen={};
+  DB.entries.forEach(function(e){
+    var s=e.supplier||{};
+    var k=s.firm||((s.contacts||[])[0]||{}).name||"?";
+    if(!seen[k]){seen[k]=true;sups.push(Object.assign({},s));}
+  });
+  var f=sups.filter(function(s){
+    if(!q)return true;
+    return (s.firm||"").toLowerCase().indexOf(q)>=0 ||
+      (s.contacts||[]).some(function(ct){return ct.name.toLowerCase().indexOf(q)>=0;}) ||
+      (s.phones||[]).some(function(p){return p.number.indexOf(q)>=0;});
+  });
+
+  c.innerHTML="";
+  if(!f.length){
+    var emptyDiv=document.createElement("div");
+    emptyDiv.className="empty";
+    emptyDiv.innerHTML='<div class="eicon">?</div>No suppliers yet';
+    c.appendChild(emptyDiv);
+    return;
+  }
+
+  var phC={mobile:"ph-mob",whatsapp:"ph-wa",office:"ph-off",other:"ph-oth"};
+
+  f.forEach(function(s){
+    var ini=(s.firm||((s.contacts||[])[0]||{}).name||"?").substring(0,2).toUpperCase();
+    var card=document.createElement("div");
+    card.className="supcard";
+
+    var top=document.createElement("div");
+    top.style.cssText="display:flex;align-items:flex-start;gap:9px";
+    var av=document.createElement("div");av.className="supav";av.textContent=ini;
+    var info=document.createElement("div");
+    info.style.cssText="flex:1;min-width:0";
+    info.innerHTML='<div style="font-weight:600">'+esc(s.firm||"--")+'</div>'+
+      '<div style="font-size:11px;color:var(--txt3)">'+esc(s.address||"")+'</div>'+
+      '<div style="color:var(--gold);font-size:11px;margin-top:2px">'+"*".repeat(s.stars||0)+"o".repeat(5-(s.stars||0))+'</div>';
+    top.appendChild(av);top.appendChild(info);
+    card.appendChild(top);
+
+    var contactsDiv=document.createElement("div");
+    contactsDiv.style.cssText="margin-top:9px";
+    (s.contacts||[]).forEach(function(ct){
+      var cd=document.createElement("div");
+      cd.style.cssText="font-size:12px;display:flex;align-items:center;gap:5px;padding:2px 0";
+      cd.innerHTML='<span style="font-weight:500">'+esc(ct.name)+'</span>'+(ct.role?'<span style="color:var(--txt3)">- '+esc(ct.role)+'</span>':'');
+      contactsDiv.appendChild(cd);
+    });
+    card.appendChild(contactsDiv);
+
+    var phonesDiv=document.createElement("div");
+    phonesDiv.style.cssText="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px";
+    (s.phones||[]).forEach(function(p){
+      var pSpan=document.createElement("span");
+      pSpan.className="phbadge "+(phC[p.type]||"ph-oth");
+      pSpan.textContent=p.type;
+      var nSpan=document.createElement("span");
+      nSpan.style.cssText="font-size:12px;color:var(--txt3);margin-right:5px";
+      nSpan.textContent=esc(p.number);
+      phonesDiv.appendChild(pSpan);
+      phonesDiv.appendChild(nSpan);
+    });
+    card.appendChild(phonesDiv);
+
+    if(s.notes){
+      var notesDiv=document.createElement("div");
+      notesDiv.style.cssText="font-size:11px;color:var(--txt3);margin-top:5px";
+      notesDiv.textContent=s.notes;
+      card.appendChild(notesDiv);
+    }
+
+    if(s.cardImages && s.cardImages.length){
+      var cardImgsDiv=document.createElement("div");
+      cardImgsDiv.style.cssText="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap";
+      s.cardImages.forEach(function(ci, ci_i){
+        var wrap=document.createElement("div");
+        wrap.style.cssText="position:relative;display:inline-block";
+        var img=document.createElement("img");
+        img.src=ci;
+        img.style.cssText="width:110px;height:70px;object-fit:cover;border-radius:6px;border:1px solid var(--bdr);cursor:pointer";
+        var label = ci_i===0 ? "Card Front" : "Card Back";
+        img.onclick=function(){
+          openLB([ci],[{itemName:label,supName:esc(s.firm||""),date:"",tunch:"",wastage:"",melting:"",labour:"",meltingVerified:false,stars:0}],0);
+        };
+        var lbl=document.createElement("div");
+        lbl.style.cssText="position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px";
+        lbl.textContent = ci_i===0 ? "FRONT" : "BACK";
+        wrap.appendChild(img);wrap.appendChild(lbl);
+        cardImgsDiv.appendChild(wrap);
+      });
+      card.appendChild(cardImgsDiv);
+    }
+
+    c.appendChild(card);
+  });
+}
 
 var DRFILE="jewellery_pricebook_v4.json";
 function setDP(state,dot,txt){var el=document.getElementById("dpill");el.className="drive-pill "+state;document.getElementById("ddot").textContent=dot;document.getElementById("dtxt").textContent=txt;}
 async function initDrive(){setDP("loading","...","Connecting");try{var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:5000,mcp_servers:[{type:"url",url:"https://drivemcp.googleapis.com/mcp/v1",name:"gdrive"}],messages:[{role:"user",content:'Search Google Drive (sumitskjewellers@gmail.com) for file named exactly "'+DRFILE+'". If found return full content. Reply ONLY JSON: {"found":true,"fileId":"...","data":...} or {"found":false}'}]})});var d=await r.json();var tx=d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");var m=tx.match(/\{[\s\S]*\}/);if(m){var p=JSON.parse(m[0]);if(p.found&&p.data){driveFileId=p.fileId||null;if(p.data.entries)DB=Object.assign({},DB,p.data);toast("Data loaded from Drive","ok");}}setDP("ok","OK","Drive synced");}catch(e){setDP("err","!","Drive error");toast("Drive: "+e.message,"err");}}
 async function saveDr(){setDP("loading","...","Saving");try{var pay=JSON.stringify(DB);var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:500,mcp_servers:[{type:"url",url:"https://drivemcp.googleapis.com/mcp/v1",name:"gdrive"}],messages:[{role:"user",content:(driveFileId?'Update file ID "'+driveFileId+'"':"Create file")+' named "'+DRFILE+'" in Google Drive (sumitskjewellers@gmail.com) with content: '+pay+'. Reply ONLY: {"success":true,"fileId":"..."}'}]})});var d=await r.json();var tx=d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");var m=tx.match(/\{[\s\S]*\}/);if(m){var p=JSON.parse(m[0]);if(p.fileId)driveFileId=p.fileId;}setDP("ok","OK","Saved");}catch(e){setDP("err","!","Save failed");toast("Save failed","err");}}
-async function syncDrive(){toast("Syncing","info");await // ═══ PWA: Service Worker Registration ═══
+async function syncDrive(){
+  try {
+    toast("Syncing...","info");
+    setDP("loading","...","Syncing...");
+    await initDrive();
+  } catch(e) {
+    toast("Sync error: "+e.message,"err");
+  }
+}
+
+function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function toast(msg,type){if(!type)type="ok";var t=document.getElementById("toast");t.textContent=msg;t.className="toast on "+type;setTimeout(function(){t.classList.remove("on");},3200);}
+
+// === PWA: Service Worker Registration ===
 var deferredPrompt = null;
 
 // Detect iOS Safari
 var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 var isInStandaloneMode = window.navigator.standalone === true;
 if (isIOS && !isInStandaloneMode) {
-  // Show iOS install button in topbar
   window.addEventListener('DOMContentLoaded', function() {
     var b = document.getElementById('ios-install-btn');
     if (b) b.style.display = 'block';
@@ -617,17 +1125,14 @@ if (isIOS && !isInStandaloneMode) {
 
 // Clear ALL old service workers and caches first
 if ('serviceWorker' in navigator) {
-  // Unregister all old service workers
   navigator.serviceWorker.getRegistrations().then(function(registrations) {
     for(var r of registrations) { r.unregister(); }
   });
-  // Clear all caches
   if('caches' in window) {
     caches.keys().then(function(names) {
       for(var name of names) { caches.delete(name); }
     });
   }
-  // Register fresh SW after short delay
   setTimeout(function() {
     navigator.serviceWorker.register('/pricebook/sw.js?v=3')
       .then(function(reg){ console.log('SW v3 registered'); })
@@ -639,11 +1144,13 @@ if ('serviceWorker' in navigator) {
 window.addEventListener('beforeinstallprompt', function(e) {
   e.preventDefault();
   deferredPrompt = e;
-  document.getElementById('install-bar').style.display = 'flex';
+  var bar = document.getElementById('install-bar');
+  if(bar) bar.style.display = 'flex';
 });
 
 window.addEventListener('appinstalled', function() {
-  document.getElementById('install-bar').style.display = 'none';
+  var bar = document.getElementById('install-bar');
+  if(bar) bar.style.display = 'none';
   deferredPrompt = null;
   toast('App installed on home screen!', 'ok');
 });
@@ -680,10 +1187,10 @@ function installPWA() {
         toast('Installing...', 'ok');
       }
       deferredPrompt = null;
-      document.getElementById('install-bar').style.display = 'none';
+      var bar = document.getElementById('install-bar');
+      if(bar) bar.style.display = 'none';
     });
   } else {
-    // iOS fallback instructions
     toast('Tap Share then Add to Home Screen', 'info');
   }
 }
@@ -691,13 +1198,15 @@ function installPWA() {
 // Show notice if in iframe (Claude chat embed)
 try {
   if (window.self !== window.top) {
-    document.getElementById('browser-notice').style.display = 'block';
+    var notice = document.getElementById('browser-notice');
+    if(notice) notice.style.display = 'block';
   }
 } catch(e) {
-  document.getElementById('browser-notice').style.display = 'block';
+  var notice2 = document.getElementById('browser-notice');
+  if(notice2) notice2.style.display = 'block';
 }
 
-// ═══ OFFLINE INDICATOR ═══
+// === OFFLINE INDICATOR ===
 function updateOnlineStatus() {
   if (!navigator.onLine) {
     toast('Offline - data saved locally', 'info');
@@ -706,10 +1215,7 @@ function updateOnlineStatus() {
 window.addEventListener('offline', updateOnlineStatus);
 window.addEventListener('online', function() { toast('Back online', 'ok'); });
 
-// ═══ INIT ═══
-initDrive();}
-function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function toast(msg,type){if(!type)type="ok";var t=document.getElementById("toast");t.textContent=msg;t.className="toast on "+type;setTimeout(function(){t.classList.remove("on");},3200);}
+// === INIT ===
 initDrive();
 </script>
 </body>
