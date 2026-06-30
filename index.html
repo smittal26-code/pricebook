@@ -228,7 +228,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <div class="logo"><div class="logo-gem">&#10022;</div>Price Book</div>
   <div style="display:flex;gap:6px;align-items:center">
     <button id="ios-install-btn" onclick="showiOSInstall()" style="display:none;background:var(--gold);color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">+ Home</button>
-    <div class="drive-pill loading" id="dpill" onclick="syncDrive()" style="cursor:pointer;min-width:90px"><span id="ddot">&#9203;</span> <span id="dtxt">Connecting</span></div>
+    <div class="drive-pill loading" id="dpill" onclick="syncDrive()" style="cursor:pointer;min-width:90px"><span id="ddot">&#9203;</span> <span id="dtxt">Tap to connect</span></div>
   </div>
 </div>
 
@@ -449,6 +449,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 </div>
 
 <div class="toast" id="toast"></div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
 <script>
 var DB={entries:[],subs:{gold:[],silver:[],diamond:[]},items:{}};
 var driveFileId=null;
@@ -483,7 +485,58 @@ var lbl=document.createElement("div");lbl.style.cssText="position:absolute;botto
 wrapper.appendChild(img);wrapper.appendChild(lbl);strip.appendChild(wrapper);
 };r.readAsDataURL(f);}
 
-async function scanCard(){var hF=!!sides.front,hB=!!sides.back;if(!hF&&!hB)return;document.getElementById("cardai").classList.add("on");document.getElementById("caitxt").textContent=hF&&hB?"Reading both sides":"Reading card";document.getElementById("scanbtn").disabled=true;var cnt=[];if(hF){cnt.push({type:"image",source:{type:"base64",media_type:sides.front.mime,data:sides.front.b64}});cnt.push({type:"text",text:hB?"FRONT side of visiting card.":"This is a visiting card."});}if(hB){cnt.push({type:"image",source:{type:"base64",media_type:sides.back.mime,data:sides.back.b64}});cnt.push({type:"text",text:"BACK side of same visiting card."});}cnt.push({type:"text",text:'Extract ALL info. Combine both sides. Return ONLY valid JSON no markdown: {"firm":"","contacts":[{"name":"","role":""}],"phones":[{"type":"mobile|whatsapp|office|other","number":""}],"address":"","notes":""}. Deduplicate numbers. Combine address from both sides.'});try{var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:800,messages:[{role:"user",content:cnt}]})});var d=await r.json();var tx=d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");var m=tx.match(/\{[\s\S]*\}/);if(m){fillCard(JSON.parse(m[0]));toast("Card read - review fields","ok");}else toast("Could not read - fill manually","err");}catch(e){toast("AI error: "+e.message,"err");}document.getElementById("cardai").classList.remove("on");document.getElementById("scanbtn").disabled=false;}
+var GEMINI_API_KEY = "AQ.Ab8RN6Jx3jmeVOBJSjKoSEoj18Q1okBD1rpT7CpqmaKKUXO8rg";
+
+async function scanCard(){
+  var hF=!!sides.front, hB=!!sides.back;
+  if(!hF&&!hB)return;
+
+  document.getElementById("cardai").classList.add("on");
+  document.getElementById("caitxt").textContent = hF&&hB ? "Reading both sides" : "Reading card";
+  document.getElementById("scanbtn").disabled = true;
+
+  var parts = [];
+  if(hF){
+    parts.push({inline_data:{mime_type: sides.front.mime, data: sides.front.b64}});
+    parts.push({text: hB ? "FRONT side of visiting card." : "This is a visiting card."});
+  }
+  if(hB){
+    parts.push({inline_data:{mime_type: sides.back.mime, data: sides.back.b64}});
+    parts.push({text: "BACK side of same visiting card."});
+  }
+  parts.push({text: 'Extract ALL info from this visiting card. Combine both sides. Return ONLY valid JSON, no markdown, no code fences: {"firm":"","contacts":[{"name":"","role":""}],"phones":[{"type":"mobile|whatsapp|office|other","number":""}],"address":"","notes":""}. Deduplicate numbers. Combine address from both sides.'});
+
+  try {
+    var resp = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + GEMINI_API_KEY,
+      {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({contents: [{parts: parts}]})
+      }
+    );
+    var data = await resp.json();
+    if(data.error){
+      throw new Error(data.error.message || "Gemini API error");
+    }
+    var text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+    if(!text){
+      throw new Error("No response from AI");
+    }
+    var match = text.match(/\{[\s\S]*\}/);
+    if(match){
+      fillCard(JSON.parse(match[0]));
+      toast("Card read - review fields", "ok");
+    } else {
+      toast("Could not parse card - fill manually", "err");
+    }
+  } catch(err){
+    toast("AI error: " + err.message, "err");
+  }
+
+  document.getElementById("cardai").classList.remove("on");
+  document.getElementById("scanbtn").disabled = false;
+}
 
 function fillCard(d){
   if(d.firm)document.getElementById("sfirm").value=d.firm;
@@ -658,7 +711,11 @@ function addIB(){
   h += "<div class=\"fg\" style=\"margin-top:8px\"><label>Notes</label><input type=\"text\" id=\"ino"+id+"\" placeholder=\"Notes\"></div>";
 
   h += "<div style=\"margin-top:8px\"><div class=\"slbl\" style=\"margin-bottom:4px\">Item images</div>";
-  h += "<div class=\"idrop\"><input type=\"file\" accept=\"image/*\" multiple data-action=\"addIPhs\" data-id=\""+id+"\">&#128247; Add images</div>";
+  h += "<div style=\"display:flex;gap:6px\">";
+  h += "<button type=\"button\" class=\"btn sm pri\" data-action=\"itemCamBtn\" data-id=\""+id+"\" style=\"flex:1;justify-content:center\">&#128247; Camera</button>";
+  h += "<div class=\"idrop\" style=\"flex:1;padding:7px\"><input type=\"file\" accept=\"image/*\" multiple data-action=\"addIPhs\" data-id=\""+id+"\">&#128444; Gallery</div>";
+  h += "</div>";
+  h += "<input type=\"file\" accept=\"image/*\" capture=\"environment\" data-action=\"addIPhsCam\" data-id=\""+id+"\" style=\"display:none\" id=\"itemcam"+id+"\">";
   h += "<div class=\"thumbs\" id=\"iph"+id+"\"></div></div>";
 
   dv.innerHTML = h;
@@ -699,6 +756,10 @@ function wireItemBlockEvents(container){
       var n = parseInt(el.getAttribute("data-n"));
       el.onclick=function(){ setIS(id, n); };
     } else if(action==="addIPhs"){
+      el.onchange=function(e){ addIPhs(e, id); };
+    } else if(action==="itemCamBtn"){
+      el.onclick=function(){ document.getElementById("itemcam"+id).click(); };
+    } else if(action==="addIPhsCam"){
       el.onchange=function(e){ addIPhs(e, id); };
     }
   });
@@ -1089,18 +1150,160 @@ function renderSup(){
   });
 }
 
-var DRFILE="jewellery_pricebook_v4.json";
-function setDP(state,dot,txt){var el=document.getElementById("dpill");el.className="drive-pill "+state;document.getElementById("ddot").textContent=dot;document.getElementById("dtxt").textContent=txt;}
-async function initDrive(){setDP("loading","...","Connecting");try{var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:5000,mcp_servers:[{type:"url",url:"https://drivemcp.googleapis.com/mcp/v1",name:"gdrive"}],messages:[{role:"user",content:'Search Google Drive (sumitskjewellers@gmail.com) for file named exactly "'+DRFILE+'". If found return full content. Reply ONLY JSON: {"found":true,"fileId":"...","data":...} or {"found":false}'}]})});var d=await r.json();var tx=d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");var m=tx.match(/\{[\s\S]*\}/);if(m){var p=JSON.parse(m[0]);if(p.found&&p.data){driveFileId=p.fileId||null;if(p.data.entries)DB=Object.assign({},DB,p.data);toast("Data loaded from Drive","ok");}}setDP("ok","OK","Drive synced");}catch(e){setDP("err","!","Drive error");toast("Drive: "+e.message,"err");}}
-async function saveDr(){setDP("loading","...","Saving");try{var pay=JSON.stringify(DB);var r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:500,mcp_servers:[{type:"url",url:"https://drivemcp.googleapis.com/mcp/v1",name:"gdrive"}],messages:[{role:"user",content:(driveFileId?'Update file ID "'+driveFileId+'"':"Create file")+' named "'+DRFILE+'" in Google Drive (sumitskjewellers@gmail.com) with content: '+pay+'. Reply ONLY: {"success":true,"fileId":"..."}'}]})});var d=await r.json();var tx=d.content.filter(function(b){return b.type==="text";}).map(function(b){return b.text;}).join("");var m=tx.match(/\{[\s\S]*\}/);if(m){var p=JSON.parse(m[0]);if(p.fileId)driveFileId=p.fileId;}setDP("ok","OK","Saved");}catch(e){setDP("err","!","Save failed");toast("Save failed","err");}}
-async function syncDrive(){
-  try {
-    toast("Syncing...","info");
-    setDP("loading","...","Syncing...");
-    await initDrive();
-  } catch(e) {
-    toast("Sync error: "+e.message,"err");
+var DRFILE = "jewellery_pricebook_v4.json";
+var GOOGLE_CLIENT_ID = "780713222130-n1pla1u98rf13d7i56gf9je6hrv6hosg.apps.googleusercontent.com";
+var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+var gAccessToken = null;
+var tokenClient = null;
+
+function setDP(state,dot,txt){
+  var el=document.getElementById("dpill");
+  if(!el)return;
+  el.className="drive-pill "+state;
+  document.getElementById("ddot").textContent=dot;
+  document.getElementById("dtxt").textContent=txt;
+}
+
+function initGoogleAuth(){
+  if(typeof google === "undefined" || !google.accounts){
+    setTimeout(initGoogleAuth, 300);
+    return;
   }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: function(resp){
+      if(resp.error){
+        setDP("err","!","Sign-in failed");
+        toast("Google sign-in failed: "+resp.error,"err");
+        return;
+      }
+      gAccessToken = resp.access_token;
+      setDP("ok","OK","Drive connected");
+      toast("Connected to Google Drive","ok");
+      loadFromDrive();
+    }
+  });
+}
+
+function connectDrive(){
+  if(!tokenClient){
+    toast("Google auth still loading, try again in a second","info");
+    initGoogleAuth();
+    return;
+  }
+  setDP("loading","...","Connecting...");
+  tokenClient.requestAccessToken({prompt: gAccessToken ? "" : "consent"});
+}
+
+async function driveApiFetch(url, options){
+  if(!gAccessToken){
+    throw new Error("Not connected to Drive yet");
+  }
+  options = options || {};
+  options.headers = options.headers || {};
+  options.headers["Authorization"] = "Bearer " + gAccessToken;
+  var resp = await fetch(url, options);
+  if(resp.status === 401){
+    gAccessToken = null;
+    setDP("err","!","Reconnect needed");
+    throw new Error("Token expired - tap Drive pill to reconnect");
+  }
+  return resp;
+}
+
+var driveFileIdCached = null;
+
+async function findDriveFile(){
+  var q = encodeURIComponent("name='" + DRFILE + "' and trashed=false");
+  var resp = await driveApiFetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name)");
+  var data = await resp.json();
+  if(data.files && data.files.length > 0){
+    return data.files[0].id;
+  }
+  return null;
+}
+
+async function loadFromDrive(){
+  try{
+    setDP("loading","...","Loading data...");
+    var fileId = await findDriveFile();
+    if(fileId){
+      driveFileIdCached = fileId;
+      var resp = await driveApiFetch("https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media");
+      var data = await resp.json();
+      if(data && data.entries){
+        DB = Object.assign({}, DB, data);
+      }
+      toast("Data loaded from Drive","ok");
+    } else {
+      toast("No existing data - starting fresh","info");
+    }
+    setDP("ok","OK","Drive synced");
+    renderSup();
+  } catch(e){
+    setDP("err","!","Load error");
+    toast("Load error: "+e.message,"err");
+  }
+}
+
+async function saveDr(){
+  if(!gAccessToken){
+    toast("Tap the Drive pill at top right to connect first","err");
+    setDP("err","!","Tap to connect");
+    return;
+  }
+  setDP("loading","...","Saving...");
+  try{
+    var content = JSON.stringify(DB);
+    var fileId = driveFileIdCached || await findDriveFile();
+
+    if(fileId){
+      driveFileIdCached = fileId;
+      var resp = await driveApiFetch(
+        "https://www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=media",
+        { method: "PATCH", headers: {"Content-Type": "application/json"}, body: content }
+      );
+      if(!resp.ok) throw new Error("Update failed: " + resp.status);
+    } else {
+      var boundary = "-------pricebook" + Date.now();
+      var metadata = {name: DRFILE, mimeType: "application/json"};
+      var body =
+        "--" + boundary + "\r\n" +
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+        JSON.stringify(metadata) + "\r\n" +
+        "--" + boundary + "\r\n" +
+        "Content-Type: application/json\r\n\r\n" +
+        content + "\r\n" +
+        "--" + boundary + "--";
+
+      var resp2 = await driveApiFetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        {
+          method: "POST",
+          headers: {"Content-Type": "multipart/related; boundary=" + boundary},
+          body: body
+        }
+      );
+      if(!resp2.ok) throw new Error("Create failed: " + resp2.status);
+      var newFile = await resp2.json();
+      driveFileIdCached = newFile.id;
+    }
+    setDP("ok","OK","Saved to Drive");
+    toast("Saved to Google Drive","ok");
+  } catch(e){
+    setDP("err","!","Save failed");
+    toast("Save failed: "+e.message,"err");
+  }
+}
+
+async function initDrive(){
+  setDP("loading","...","Tap to connect");
+  initGoogleAuth();
+}
+
+async function syncDrive(){
+  connectDrive();
 }
 
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
