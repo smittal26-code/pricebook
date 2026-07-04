@@ -306,7 +306,11 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       </div>
       <div class="div"></div>
       <div class="slbl">Shop photos</div>
-      <div class="idrop"><input type="file" accept="image/*" multiple onchange="addPhs(event,'shopprev',shopPhs)">&#128247; Add shop photos</div>
+      <div style="display:flex;gap:6px">
+        <button type="button" class="btn sm pri" onclick="document.getElementById('shopcam').click()" style="flex:1;justify-content:center">&#128247; Camera</button>
+        <div class="idrop" style="flex:1;padding:7px"><input type="file" accept="image/*" multiple onchange="addPhs(event,'shopprev',shopPhs)">&#128444; Gallery</div>
+      </div>
+      <input type="file" id="shopcam" accept="image/*" capture="environment" style="display:none" onchange="addPhs(event,'shopprev',shopPhs)">
       <div class="thumbs" id="shopprev"></div>
       <div class="fg" style="margin-top:9px"><label>Notes</label><input type="text" id="snotes" placeholder="Speciality, timings"></div>
     </div>
@@ -485,16 +489,15 @@ var lbl=document.createElement("div");lbl.style.cssText="position:absolute;botto
 wrapper.appendChild(img);wrapper.appendChild(lbl);strip.appendChild(wrapper);
 };r.readAsDataURL(f);}
 
-var GEMINI_API_KEY = "AIzaSyBqzXXfIbnORuTPKMMeve70N-R_yaUI-hl";
-
 async function scanCard(){
   var hF=!!sides.front, hB=!!sides.back;
   if(!hF&&!hB)return;
 
   document.getElementById("cardai").classList.add("on");
-  document.getElementById("caitxt").textContent = hF&&hB ? "Reading both sides" : "Reading card";
+  document.getElementById("caitxt").textContent = hF&&hB ? "Reading both sides..." : "Reading card...";
   document.getElementById("scanbtn").disabled = true;
 
+  // Build Gemini request parts
   var parts = [];
   if(hF){
     parts.push({inline_data:{mime_type: sides.front.mime, data: sides.front.b64}});
@@ -507,29 +510,44 @@ async function scanCard(){
   parts.push({text: 'Extract ALL info from this visiting card. Combine both sides. Return ONLY valid JSON, no markdown, no code fences: {"firm":"","contacts":[{"name":"","role":""}],"phones":[{"type":"mobile|whatsapp|office|other","number":""}],"address":"","notes":""}. Deduplicate numbers. Combine address from both sides.'});
 
   try {
-    var resp = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + GEMINI_API_KEY,
-      {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({contents: [{parts: parts}]})
-      }
-    );
+    if(!GEMINI_PROXY_URL || GEMINI_PROXY_URL.indexOf("PASTE_YOUR") === 0){
+      toast("AI scan not set up yet - add your proxy URL (see Code.gs setup)","err");
+      document.getElementById("cardai").classList.remove("on");
+      document.getElementById("scanbtn").disabled = false;
+      return;
+    }
+
+    // Calls our own backend proxy (Apps Script), which holds the Gemini API
+    // key server-side. No OAuth token or API key is ever sent from the browser.
+    var resp = await fetch(GEMINI_PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" }, // avoids CORS preflight on Apps Script
+      body: JSON.stringify({model: "gemini-1.5-flash", contents: [{parts: parts}]})
+    });
+
     var data = await resp.json();
+
     if(data.error){
-      throw new Error(data.error.message || "Gemini API error");
+      throw new Error((data.error.code||"") + " " + (data.error.status||"") + ": " + data.error.message);
     }
-    var text = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-    if(!text){
-      throw new Error("No response from AI");
-    }
+
+    var text = data.candidates &&
+               data.candidates[0] &&
+               data.candidates[0].content &&
+               data.candidates[0].content.parts &&
+               data.candidates[0].content.parts[0] &&
+               data.candidates[0].content.parts[0].text;
+
+    if(!text) throw new Error("No response from AI");
+
     var match = text.match(/\{[\s\S]*\}/);
     if(match){
       fillCard(JSON.parse(match[0]));
-      toast("Card read - review fields", "ok");
+      toast("Card read - review and edit fields", "ok");
     } else {
-      toast("Could not parse card - fill manually", "err");
+      toast("Could not parse - fill manually", "err");
     }
+
   } catch(err){
     toast("AI error: " + err.message, "err");
   }
@@ -1155,6 +1173,9 @@ var GOOGLE_CLIENT_ID = "780713222130-n1pla1u98rf13d7i56gf9je6hrv6hosg.apps.googl
 var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 var gAccessToken = null;
 var tokenClient = null;
+// Paste your deployed Apps Script Web App URL here (see Code.gs setup instructions).
+// Example: "https://script.google.com/macros/s/AKfycbx.../exec"
+var GEMINI_PROXY_URL = "https://script.google.com/macros/s/AKfycbx-8sC5IWiJ5dpRZ3k7bHa_ofHlIiggOex04OHMADDp65X67YLujX455lMlT5gbW-1o0Q/exec";
 
 function setDP(state,dot,txt){
   var el=document.getElementById("dpill");
