@@ -454,7 +454,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 
 <div class="toast" id="toast"></div>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <script>
 var DB={entries:[],subs:{gold:[],silver:[],diamond:[]},items:{}};
 var driveFileId=null;
@@ -478,7 +478,29 @@ function togCol(bid,tid){
   } catch(e) { console.error('togCol error:',e); }
 }
 
-function onSide(w,e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){var src=ev.target.result;sides[w]={src:src,b64:src.split(",")[1],mime:f.type||"image/jpeg"};document.getElementById(w==="front"?"fbox":"bbox").classList.add("done");var p=document.getElementById(w==="front"?"fprev":"bprev");p.src=src;p.style.display="block";document.getElementById(w==="front"?"flbl":"blbl").textContent=w==="front"?"Front OK":"Back OK";document.getElementById(w==="front"?"fhint":"bhint").textContent="Tap to change";var b=document.getElementById("scanbtn");b.disabled=false;b.style.opacity="1";
+// Resize + re-compress an image dataURL client-side before it's stored or synced.
+// This is the single biggest lever for app speed: uncompressed camera photos
+// (often 3-12MB each) otherwise get stored at full size in memory, in every
+// thumbnail, and in the Drive JSON blob that's re-uploaded on every save.
+function compressImage(dataUrl, maxDim, quality){
+  return new Promise(function(resolve){
+    var img=new Image();
+    img.onload=function(){
+      var w=img.naturalWidth, h=img.naturalHeight;
+      var scale=Math.min(1, maxDim/Math.max(w,h));
+      var cw=Math.round(w*scale), ch=Math.round(h*scale);
+      var c=document.createElement("canvas");c.width=cw;c.height=ch;
+      c.getContext("2d").drawImage(img,0,0,cw,ch);
+      resolve(c.toDataURL("image/jpeg",quality));
+    };
+    img.onerror=function(){ resolve(dataUrl); }; // fall back to original if it fails
+    img.src=dataUrl;
+  });
+}
+
+function onSide(w,e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){
+compressImage(ev.target.result,1600,0.82).then(function(src){
+sides[w]={src:src,b64:src.split(",")[1],mime:"image/jpeg"};document.getElementById(w==="front"?"fbox":"bbox").classList.add("done");var p=document.getElementById(w==="front"?"fprev":"bprev");p.src=src;p.style.display="block";document.getElementById(w==="front"?"flbl":"blbl").textContent=w==="front"?"Front OK":"Back OK";document.getElementById(w==="front"?"fhint":"bhint").textContent="Tap to change";var b=document.getElementById("scanbtn");b.disabled=false;b.style.opacity="1";
 // show in strip
 var strip=document.getElementById("cardimgstrip");strip.style.display="flex";
 var imgId="cardimg_"+w;var existing=document.getElementById(imgId);if(existing)existing.remove();
@@ -487,6 +509,7 @@ var img=document.createElement("img");img.id=imgId;img.src=src;img.style.cssText
 img.onclick=function(){openLB([src],[{itemName:(w==="front"?"Card Front":"Card Back"),supName:"",date:"",tunch:"",wastage:"",melting:"",labour:"",meltingVerified:false,stars:0}],0);};
 var lbl=document.createElement("div");lbl.style.cssText="position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px";lbl.textContent=w==="front"?"FRONT":"BACK";
 wrapper.appendChild(img);wrapper.appendChild(lbl);strip.appendChild(wrapper);
+});
 };r.readAsDataURL(f);}
 
 async function scanCard(){
@@ -665,7 +688,7 @@ function addPR(){
 }
 function rm(id){var el=document.getElementById(id);if(el)el.remove();}
 function setSS(n){supSV=n;document.querySelectorAll("#supstars .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});document.getElementById("sslbl").textContent=["","Poor","Fair","Good","Very good","Excellent"][n];}
-function addPhs(e,pid,arr){Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){arr.push(ev.target.result);var img=document.createElement("img");img.src=ev.target.result;img.className="thumb";document.getElementById(pid).appendChild(img);};r.readAsDataURL(f);});}
+function addPhs(e,pid,arr){Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){compressImage(ev.target.result,1280,0.75).then(function(src){arr.push(src);var img=document.createElement("img");img.src=src;img.className="thumb";document.getElementById(pid).appendChild(img);});};r.readAsDataURL(f);});}
 
 function addIB(){
   var id=++ic;
@@ -795,7 +818,7 @@ function cDT(id){var m=parseFloat(document.getElementById("dmel"+id).value)||0;v
 function togV(id){iVer[id]=!iVer[id];var b=document.getElementById("vb"+id);b.classList.toggle("ok",iVer[id]);b.textContent=iVer[id]?"Verified":"Verify";}
 function togDV(id){var k="d"+id;iVer[k]=!iVer[k];var b=document.getElementById("dvb"+id);b.classList.toggle("ok",iVer[k]);b.textContent=iVer[k]?"Verified":"Verify";}
 function setIS(id,n){iStars[id]=n;document.querySelectorAll("#is"+id+" .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});}
-function addIPhs(e,id){Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){iPhs[id].push({src:ev.target.result,stars:0});var img=document.createElement("img");img.src=ev.target.result;img.className="thumb";document.getElementById("iph"+id).appendChild(img);};r.readAsDataURL(f);});}
+function addIPhs(e,id){Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){compressImage(ev.target.result,1280,0.75).then(function(src){iPhs[id].push({src:src,stars:0});var img=document.createElement("img");img.src=src;img.className="thumb";document.getElementById("iph"+id).appendChild(img);});};r.readAsDataURL(f);});}
 function addGr(iid){
   var gi=++gCnt[iid];
   var gk=iid+"_"+gi;
@@ -830,7 +853,7 @@ function addGr(iid){
   if(fileInput) fileInput.onchange = function(e){ addGPhs(e, iid, gi); };
 }
 
-function addGPhs(e,iid,gi){var gk=iid+"_"+gi;if(!gPhs[gk])gPhs[gk]=[];Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){gPhs[gk].push({src:ev.target.result,stars:0});var img=document.createElement("img");img.src=ev.target.result;img.className="thumb";document.getElementById("gph"+iid+"-"+gi).appendChild(img);};r.readAsDataURL(f);});}
+function addGPhs(e,iid,gi){var gk=iid+"_"+gi;if(!gPhs[gk])gPhs[gk]=[];Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){compressImage(ev.target.result,1280,0.75).then(function(src){gPhs[gk].push({src:src,stars:0});var img=document.createElement("img");img.src=src;img.className="thumb";document.getElementById("gph"+iid+"-"+gi).appendChild(img);});};r.readAsDataURL(f);});}
 
 function colSup(){var cs=[],ps=[];document.querySelectorAll("#cwrap .cr").forEach(function(r){var n=r.querySelector(".cn").value.trim();var ro=r.querySelector(".cro").value.trim();if(n)cs.push({name:n,role:ro});});document.querySelectorAll("#pwrap .pr").forEach(function(r){var n=r.querySelector(".pn").value.trim();var t=r.querySelector(".pt").value;if(n)ps.push({type:t,number:n});});return{firm:document.getElementById("sfirm").value.trim(),contacts:cs,phones:ps,address:document.getElementById("saddr").value.trim(),notes:document.getElementById("snotes").value.trim(),stars:supSV,photos:[].concat(shopPhs),cardImages:[sides.front&&sides.front.src,sides.back&&sides.back.src].filter(Boolean)};}
 function colItems(){var items=[];document.querySelectorAll("[id^='ib']").forEach(function(bl){var id=parseInt(bl.id.replace("ib",""));if(isNaN(id))return;var m=getIM(id);var isD=m==="diamond";var it={master:m,submaster:document.getElementById("sm"+id).value,itemName:document.getElementById("it"+id).value,date:document.getElementById("dt"+id).value,notes:document.getElementById("ino"+id).value,stars:iStars[id]||0,images:[].concat(iPhs[id]||[])};if(!isD){it.melting=document.getElementById("mel"+id).value;it.wastage=document.getElementById("wst"+id).value;it.tunch=document.getElementById("tun"+id).value;it.labour=document.getElementById("lab"+id).value;it.meltingVerified=iVer[id]||false;}else{it.melting=document.getElementById("dmel"+id).value;it.wastage=document.getElementById("dwst"+id).value;it.tunch=document.getElementById("dtun"+id).value;it.labour=document.getElementById("dlab"+id).value;it.meltingVerified=iVer["d"+id]||false;var grades=[];document.querySelectorAll("#grd"+id+" .gblock").forEach(function(gb,gi){var gk=id+"_"+(gi+1);grades.push({colour:gb.querySelector(".gcol").value,clarity:gb.querySelector(".gclar").value,weight:gb.querySelector(".gwt").value,price:gb.querySelector(".gprc").value,date:gb.querySelector(".gdt").value,notes:gb.querySelector(".gnot").value,images:[].concat(gPhs[gk]||[])});});it.grades=grades;}items.push(it);});return items;}
@@ -1217,6 +1240,203 @@ function connectDrive(){
   tokenClient.requestAccessToken({prompt: gAccessToken ? "" : "consent"});
 }
 
+// ===== Drive image externalization =====
+// Images now live as separate files in a "PricebookImages" Drive folder.
+// The main DB JSON only stores a small {driveId} reference per image, so
+// saves/loads stay fast even as the photo library grows. Once fetched, images
+// are cached in IndexedDB so repeat app opens don't re-download anything.
+
+var imgFolderIdCached = null;
+var imgCache = {}; // driveId -> dataURL, in-memory for this session
+
+async function getImgFolder(){
+  if(imgFolderIdCached) return imgFolderIdCached;
+  var q = encodeURIComponent("name='PricebookImages' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  var resp = await driveApiFetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id,name)");
+  var data = await resp.json();
+  if(data.files && data.files.length){ imgFolderIdCached = data.files[0].id; return imgFolderIdCached; }
+  var resp2 = await driveApiFetch("https://www.googleapis.com/drive/v3/files", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name:"PricebookImages", mimeType:"application/vnd.google-apps.folder"})
+  });
+  var nf = await resp2.json();
+  imgFolderIdCached = nf.id;
+  return imgFolderIdCached;
+}
+
+function dataURLtoBlob(dataUrl){
+  var parts=dataUrl.split(",");
+  var m=parts[0].match(/:(.*?);/);
+  var mime=m?m[1]:"image/jpeg";
+  var bstr=atob(parts[1]);
+  var n=bstr.length,u8=new Uint8Array(n);
+  for(var i=0;i<n;i++) u8[i]=bstr.charCodeAt(i);
+  return new Blob([u8],{type:mime});
+}
+
+async function driveUploadImage(dataUrl){
+  var folderId=await getImgFolder();
+  var name="img_"+Date.now()+"_"+Math.random().toString(36).slice(2,8)+".jpg";
+  var createResp=await driveApiFetch("https://www.googleapis.com/drive/v3/files",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:name,parents:[folderId]})
+  });
+  var created=await createResp.json();
+  var fileId=created.id;
+  var blob=dataURLtoBlob(dataUrl);
+  await driveApiFetch("https://www.googleapis.com/upload/drive/v3/files/"+fileId+"?uploadType=media",{
+    method:"PATCH",headers:{"Content-Type":blob.type||"image/jpeg"},body:blob
+  });
+  imgCache[fileId]=dataUrl; // we already have it locally, no need to ever re-download this one
+  idbSetImg(fileId,dataUrl);
+  return fileId;
+}
+
+async function driveFetchImage(fileId){
+  if(imgCache[fileId]) return imgCache[fileId];
+  var cached=await idbGetImg(fileId);
+  if(cached){ imgCache[fileId]=cached; return cached; }
+  var resp=await driveApiFetch("https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media");
+  var blob=await resp.blob();
+  var dataUrl=await new Promise(function(resolve){
+    var r=new FileReader();r.onload=function(){resolve(r.result);};r.readAsDataURL(blob);
+  });
+  imgCache[fileId]=dataUrl;
+  idbSetImg(fileId,dataUrl);
+  return dataUrl;
+}
+
+// Minimal IndexedDB key-value cache so images persist across app restarts
+// without re-downloading from Drive every time.
+var _idbP=null;
+function idbOpen(){
+  if(_idbP) return _idbP;
+  _idbP=new Promise(function(resolve,reject){
+    try{
+      var req=indexedDB.open("pbimgcache",1);
+      req.onupgradeneeded=function(){ req.result.createObjectStore("imgs"); };
+      req.onsuccess=function(){ resolve(req.result); };
+      req.onerror=function(){ reject(req.error); };
+    }catch(e){ reject(e); }
+  });
+  return _idbP;
+}
+async function idbGetImg(key){
+  try{
+    var db=await idbOpen();
+    return await new Promise(function(resolve){
+      var tx=db.transaction("imgs","readonly");
+      var req=tx.objectStore("imgs").get(key);
+      req.onsuccess=function(){resolve(req.result||null);};
+      req.onerror=function(){resolve(null);};
+    });
+  }catch(e){ return null; }
+}
+async function idbSetImg(key,val){
+  try{
+    var db=await idbOpen();
+    var tx=db.transaction("imgs","readwrite");
+    tx.objectStore("imgs").put(val,key);
+  }catch(e){}
+}
+
+// Upload any images that haven't been offloaded to Drive yet (tagged via
+// photosRef/cardImagesRef arrays, or .driveId on item/grade image objects).
+// Already-uploaded images are skipped, so re-saving is fast.
+async function uploadPendingImages(db){
+  var pending=[];
+  (db.entries||[]).forEach(function(e){
+    var sup=e.supplier||{};
+    if(sup.photos && sup.photos.length){
+      if(!sup.photosRef) sup.photosRef=[];
+      sup.photos.forEach(function(src,i){
+        if(src && !sup.photosRef[i]) pending.push({src:src,setId:function(id){sup.photosRef[i]=id;}});
+      });
+    }
+    if(sup.cardImages && sup.cardImages.length){
+      if(!sup.cardImagesRef) sup.cardImagesRef=[];
+      sup.cardImages.forEach(function(src,i){
+        if(src && !sup.cardImagesRef[i]) pending.push({src:src,setId:function(id){sup.cardImagesRef[i]=id;}});
+      });
+    }
+    (e.items||[]).forEach(function(it){
+      (it.images||[]).forEach(function(img){
+        if(img && typeof img==="object" && img.src && !img.driveId) pending.push({src:img.src,setId:function(id){img.driveId=id;}});
+      });
+      (it.grades||[]).forEach(function(g){
+        (g.images||[]).forEach(function(img){
+          if(img && typeof img==="object" && img.src && !img.driveId) pending.push({src:img.src,setId:function(id){img.driveId=id;}});
+        });
+      });
+    });
+  });
+  var CONCURRENCY=4;
+  for(var i=0;i<pending.length;i+=CONCURRENCY){
+    var batch=pending.slice(i,i+CONCURRENCY);
+    await Promise.all(batch.map(async function(p){
+      try{ var id=await driveUploadImage(p.src); p.setId(id); }catch(e){ console.log("image upload failed:",e); }
+    }));
+  }
+}
+
+// Build the JSON that actually gets written to Drive: strips inline image
+// bytes wherever a driveId reference already exists (kept as fallback
+// otherwise, e.g. if an upload failed).
+function slimForDrive(db){
+  var slim=JSON.parse(JSON.stringify(db));
+  (slim.entries||[]).forEach(function(e){
+    var sup=e.supplier||{};
+    if(sup.photos && sup.photosRef){
+      sup.photos=sup.photos.map(function(src,i){ return sup.photosRef[i] ? null : src; });
+    }
+    if(sup.cardImages && sup.cardImagesRef){
+      sup.cardImages=sup.cardImages.map(function(src,i){ return sup.cardImagesRef[i] ? null : src; });
+    }
+    (e.items||[]).forEach(function(it){
+      (it.images||[]).forEach(function(img){ if(img && typeof img==="object" && img.driveId) delete img.src; });
+      (it.grades||[]).forEach(function(g){
+        (g.images||[]).forEach(function(img){ if(img && typeof img==="object" && img.driveId) delete img.src; });
+      });
+    });
+  });
+  return slim;
+}
+
+// After loading the slim JSON from Drive, fetch each referenced image and
+// restore .src/.photos/.cardImages so all existing rendering code works
+// exactly as before - it never needs to know images live externally.
+async function hydrateImages(db){
+  var refs=[];
+  (db.entries||[]).forEach(function(e){
+    var sup=e.supplier||{};
+    if(sup.photosRef && sup.photosRef.length){
+      sup.photos=sup.photos||[];
+      sup.photosRef.forEach(function(id,i){ if(id) refs.push({id:id,setSrc:function(v){sup.photos[i]=v;}}); });
+    }
+    if(sup.cardImagesRef && sup.cardImagesRef.length){
+      sup.cardImages=sup.cardImages||[];
+      sup.cardImagesRef.forEach(function(id,i){ if(id) refs.push({id:id,setSrc:function(v){sup.cardImages[i]=v;}}); });
+    }
+    (e.items||[]).forEach(function(it){
+      (it.images||[]).forEach(function(img){
+        if(img && typeof img==="object" && img.driveId && !img.src) refs.push({id:img.driveId,setSrc:function(v){img.src=v;}});
+      });
+      (it.grades||[]).forEach(function(g){
+        (g.images||[]).forEach(function(img){
+          if(img && typeof img==="object" && img.driveId && !img.src) refs.push({id:img.driveId,setSrc:function(v){img.src=v;}});
+        });
+      });
+    });
+  });
+  var CONCURRENCY=6;
+  for(var i=0;i<refs.length;i+=CONCURRENCY){
+    var batch=refs.slice(i,i+CONCURRENCY);
+    await Promise.all(batch.map(async function(r){
+      try{ var src=await driveFetchImage(r.id); r.setSrc(src); }catch(e){ console.log("image fetch failed:",e); }
+    }));
+  }
+}
+
 async function driveApiFetch(url, options){
   if(!gAccessToken){
     throw new Error("Not connected to Drive yet");
@@ -1255,6 +1475,8 @@ async function loadFromDrive(){
       var data = await resp.json();
       if(data && data.entries){
         DB = Object.assign({}, DB, data);
+        setDP("loading","...","Loading images...");
+        await hydrateImages(DB);
       }
       toast("Data loaded from Drive","ok");
     } else {
@@ -1274,9 +1496,11 @@ async function saveDr(){
     setDP("err","!","Tap to connect");
     return;
   }
-  setDP("loading","...","Saving...");
+  setDP("loading","...","Uploading images...");
   try{
-    var content = JSON.stringify(DB);
+    await uploadPendingImages(DB);
+    setDP("loading","...","Saving...");
+    var content = JSON.stringify(slimForDrive(DB));
     var fileId = driveFileIdCached || await findDriveFile();
 
     if(fileId){
@@ -1347,21 +1571,13 @@ if (isIOS && !isInStandaloneMode) {
   }, 500);
 }
 
-// Clear ALL old service workers and caches first
+// Register the service worker once. (Previously this unregistered every SW and
+// wiped ALL caches on every single app launch, which defeated offline/fast-load
+// caching entirely and added a needless 2s delay before re-registering.)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for(var r of registrations) { r.unregister(); }
-  });
-  if('caches' in window) {
-    caches.keys().then(function(names) {
-      for(var name of names) { caches.delete(name); }
-    });
-  }
-  setTimeout(function() {
-    navigator.serviceWorker.register('/pricebook/sw.js?v=3')
-      .then(function(reg){ console.log('SW v3 registered'); })
-      .catch(function(err){ console.log('SW skip:', err); });
-  }, 2000);
+  navigator.serviceWorker.register('/pricebook/sw.js?v=3')
+    .then(function(reg){ console.log('SW v3 registered'); })
+    .catch(function(err){ console.log('SW skip:', err); });
 }
 
 // PWA install prompt
