@@ -522,7 +522,7 @@ async function scanCard(){
     var resp = await fetch(GEMINI_PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain" }, // avoids CORS preflight on Apps Script
-      body: JSON.stringify({model: "gemini-1.5-flash", contents: [{parts: parts}]})
+      body: JSON.stringify({model: "gemini-2.5-flash", contents: [{parts: parts}]})
     });
 
     var data = await resp.json();
