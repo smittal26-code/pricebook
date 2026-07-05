@@ -86,7 +86,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .ph-wa{background:#E1F5EE;color:#085041;border-color:#5DCAA5}
 .ph-off{background:var(--blue-bg);color:var(--blue);border-color:var(--blue-b)}
 .ph-oth{background:var(--sur3);color:var(--txt2);border-color:var(--bdr2)}
-.sidebox{flex:1;border:1.5px dashed var(--bdr2);border-radius:var(--r);min-height:95px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:11px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--sur2)}
+.sidebox{flex:1;border:1.5px dashed var(--bdr2);border-radius:var(--r);min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--sur2)}
 .sidebox:hover{border-color:var(--brand)}
 .sidebox.done{border-style:solid;border-color:var(--green);background:var(--green-bg)}
 .sidebox .slbl2{font-size:12px;font-weight:600;color:var(--txt2)}
@@ -278,10 +278,10 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <div id="supbody">
       <div class="slbl">Visiting card scan</div>
       <div style="display:flex;gap:7px;margin-bottom:7px">
-        <div class="sidebox" id="fbox" onclick="showCardOptions('front')"><span style="font-size:22px">&#128204;</span><span class="slbl2" id="flbl">Front side</span><span class="shint" id="fhint">Tap to add</span><img class="sprev" id="fprev"></div>
+        <div class="sidebox" id="fbox" onclick="showCardOptions('front')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.6"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><circle cx="8" cy="11" r="1.6" fill="var(--brand)" stroke="none"/><path d="M4 15.5l4-3 3 2.2 3.5-3L20 15" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="slbl2" id="flbl">Front side</span><span class="shint" id="fhint">Tap to add</span><img class="sprev" id="fprev"></div>
         <input type="file" id="ifr" accept="image/*" style="display:none" onchange="onSide('front',event)">
 <input type="file" id="ifr-cam" accept="image/*" capture="environment" style="display:none" onchange="onSide('front',event)">
-        <div class="sidebox" id="bbox" onclick="showCardOptions('back')"><span style="font-size:22px">&#128204;</span><span class="slbl2" id="blbl">Back side</span><span class="shint" id="bhint">Tap to add</span><img class="sprev" id="bprev"></div>
+        <div class="sidebox" id="bbox" onclick="showCardOptions('back')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.6"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><line x1="5.5" y1="9.5" x2="18.5" y2="9.5" stroke-linecap="round"/><line x1="5.5" y1="12.5" x2="14" y2="12.5" stroke-linecap="round"/><line x1="5.5" y1="15" x2="11" y2="15" stroke-linecap="round"/></svg><span class="slbl2" id="blbl">Back side</span><span class="shint" id="bhint">Tap to add</span><img class="sprev" id="bprev"></div>
         <input type="file" id="ibk" accept="image/*" style="display:none" onchange="onSide('back',event)">
 <input type="file" id="ibk-cam" accept="image/*" capture="environment" style="display:none" onchange="onSide('back',event)">
       </div>
