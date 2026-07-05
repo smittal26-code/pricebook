@@ -829,8 +829,8 @@ function setIM(id,m,btn){document.getElementById("ib"+id).className="iblock "+m[
 function getIM(id){var s=document.getElementById("ms"+id);var a=s.querySelector(".ag,.as,.ad");return a?a.className==="ag"?"gold":a.className==="as"?"silver":"diamond":"gold";}
 function liSubs(id,m){var s=document.getElementById("sm"+id);var p=s.value;s.innerHTML='<option value="">--</option>';(DB.subs[m]||[]).forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});if(p)s.value=p;liN(id);}
 function liN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;var s=document.getElementById("it"+id);var p=s.value;s.innerHTML='<option value="">--</option>';var k=m+"_"+sm;(DB.items[k]||[]).forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});if(p)s.value=p;}
-function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0)DB.subs[m].push(n.trim());liSubs(id,m);document.getElementById("sm"+id).value=n.trim();liN(id);toast("Sub-master added","ok");}
-function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0)DB.items[k].push(n.trim());liN(id);document.getElementById("it"+id).value=n.trim();toast("Item added","ok");}
+function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());saveDr();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();liN(id);toast("Sub-master added","ok");}
+function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());saveDr();}liN(id);document.getElementById("it"+id).value=n.trim();toast("Item added","ok");}
 
 // Rename/delete for the sub-master and item-name picklists. Renaming also
 // updates every already-saved entry that used the old name, so Browse,
@@ -861,7 +861,7 @@ function renSM(id){
   document.getElementById("sm"+id).value=n;
   liN(id);
   toast("Renamed sub-master"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
-  if(changed) saveDr();
+  saveDr();
 }
 
 function delSM(id){
@@ -880,6 +880,7 @@ function delSM(id){
   delete DB.items[m+"_"+old];
   liSubs(id,m);
   toast("Sub-master removed from list","ok");
+  saveDr();
 }
 
 function renIN(id){
@@ -905,7 +906,7 @@ function renIN(id){
   liN(id);
   document.getElementById("it"+id).value=n;
   toast("Renamed item"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
-  if(changed) saveDr();
+  saveDr();
 }
 
 function delIN(id){
@@ -926,6 +927,7 @@ function delIN(id){
   DB.items[k]=(DB.items[k]||[]).filter(function(v){return v!==old;});
   liN(id);
   toast("Item name removed from list","ok");
+  saveDr();
 }
 function cT(id){var m=parseFloat(document.getElementById("mel"+id).value)||0;var w=parseFloat(document.getElementById("wst"+id).value)||0;document.getElementById("tun"+id).value=m||w?(m+w).toFixed(2):"";}
 function cDT(id){var m=parseFloat(document.getElementById("dmel"+id).value)||0;var w=parseFloat(document.getElementById("dwst"+id).value)||0;document.getElementById("dtun"+id).value=m||w?(m+w).toFixed(2):"";}
