@@ -1,4 +1,4 @@
-const CACHE = 'jpb-v2';
+const CACHE = 'jpb-v4'; // bump this number any time you want to force a clean cache reset
 const BASE = '/pricebook/';
 const ASSETS = [
   BASE,
@@ -23,20 +23,20 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Network-first: always try to fetch the latest version first. Only serve the
+// cached copy if the network request fails (i.e. actually offline). This is
+// the key fix - the old cache-first version served a stale index.html forever
+// once it was cached once, and never checked the network again.
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request)
-      .then(cached => {
-        if (cached) return cached;
-        return fetch(e.request)
-          .then(res => {
-            if (res && res.status === 200) {
-              const clone = res.clone();
-              caches.open(CACHE).then(c => c.put(e.request, clone));
-            }
-            return res;
-          })
-          .catch(() => caches.match(BASE + 'index.html'));
+    fetch(e.request)
+      .then(res => {
+        if (res && res.status === 200) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return res;
       })
+      .catch(() => caches.match(e.request).then(cached => cached || caches.match(BASE + 'index.html')))
   );
 });
