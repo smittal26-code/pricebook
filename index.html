@@ -714,10 +714,14 @@ function addIB(){
   h += "<div class=\"frow\">";
   h += "<div class=\"fg\"><label>Sub-Master</label><div class=\"irow\">";
   h += "<select id=\"sm"+id+"\" data-action=\"liN\" data-id=\""+id+"\"><option value=\"\">--</option></select>";
-  h += "<button class=\"btn sm ghost\" data-action=\"addSM\" data-id=\""+id+"\">+</button></div></div>";
+  h += "<button class=\"btn sm ghost\" data-action=\"addSM\" data-id=\""+id+"\">+</button>";
+  h += "<button class=\"btn sm ghost\" data-action=\"renSM\" data-id=\""+id+"\" title=\"Rename selected\">&#9998;</button>";
+  h += "<button class=\"btn sm ghost\" data-action=\"delSM\" data-id=\""+id+"\" title=\"Remove from list\">&#128465;</button></div></div>";
   h += "<div class=\"fg\"><label>Item name</label><div class=\"irow\">";
   h += "<select id=\"it"+id+"\"><option value=\"\">--</option></select>";
-  h += "<button class=\"btn sm ghost\" data-action=\"addIN\" data-id=\""+id+"\">+</button></div></div>";
+  h += "<button class=\"btn sm ghost\" data-action=\"addIN\" data-id=\""+id+"\">+</button>";
+  h += "<button class=\"btn sm ghost\" data-action=\"renIN\" data-id=\""+id+"\" title=\"Rename selected\">&#9998;</button>";
+  h += "<button class=\"btn sm ghost\" data-action=\"delIN\" data-id=\""+id+"\" title=\"Remove from list\">&#128465;</button></div></div>";
   h += "<div class=\"fg\"><label>Date</label><input type=\"date\" id=\"dt"+id+"\" value=\""+today+"\"></div>";
   h += "</div>";
 
@@ -783,8 +787,16 @@ function wireItemBlockEvents(container){
       el.onchange=function(){ liN(id); };
     } else if(action==="addSM"){
       el.onclick=function(){ addSM(id); };
+    } else if(action==="renSM"){
+      el.onclick=function(){ renSM(id); };
+    } else if(action==="delSM"){
+      el.onclick=function(){ delSM(id); };
     } else if(action==="addIN"){
       el.onclick=function(){ addIN(id); };
+    } else if(action==="renIN"){
+      el.onclick=function(){ renIN(id); };
+    } else if(action==="delIN"){
+      el.onclick=function(){ delIN(id); };
     } else if(action==="cT"){
       el.oninput=function(){ cT(id); };
     } else if(action==="togV"){
@@ -815,6 +827,102 @@ function liSubs(id,m){var s=document.getElementById("sm"+id);var p=s.value;s.inn
 function liN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;var s=document.getElementById("it"+id);var p=s.value;s.innerHTML='<option value="">--</option>';var k=m+"_"+sm;(DB.items[k]||[]).forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});if(p)s.value=p;}
 function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0)DB.subs[m].push(n.trim());liSubs(id,m);document.getElementById("sm"+id).value=n.trim();liN(id);toast("Sub-master added","ok");}
 function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0)DB.items[k].push(n.trim());liN(id);document.getElementById("it"+id).value=n.trim();toast("Item added","ok");}
+
+// Rename/delete for the sub-master and item-name picklists. Renaming also
+// updates every already-saved entry that used the old name, so Browse,
+// Catalogue and Compare stay consistent instead of showing stale duplicates.
+function renSM(id){
+  var m=getIM(id);
+  var sel=document.getElementById("sm"+id);
+  var old=sel.value;
+  if(!old){toast("Select a sub-master first","err");return;}
+  var n=prompt("Rename sub-master \""+old+"\" to:",old);
+  if(!n||!n.trim()||n.trim()===old)return;
+  n=n.trim();
+  if(!DB.subs[m])DB.subs[m]=[];
+  var idx=DB.subs[m].indexOf(old);
+  if(idx>=0)DB.subs[m][idx]=n; else DB.subs[m].push(n);
+  DB.subs[m]=DB.subs[m].filter(function(v,i,a){return a.indexOf(v)===i;});
+  var oldKey=m+"_"+old, newKey=m+"_"+n;
+  if(DB.items[oldKey]){
+    DB.items[newKey]=(DB.items[newKey]||[]).concat(DB.items[oldKey]).filter(function(v,i,a){return a.indexOf(v)===i;});
+    delete DB.items[oldKey];
+  }
+  var changed=0;
+  (DB.entries||[]).forEach(function(e){
+    (e.items||[]).forEach(function(it){ if(it.master===m && it.submaster===old){ it.submaster=n; changed++; } });
+  });
+  if(changed) dbVersion++;
+  liSubs(id,m);
+  document.getElementById("sm"+id).value=n;
+  liN(id);
+  toast("Renamed sub-master"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
+  if(changed) saveDr();
+}
+
+function delSM(id){
+  var m=getIM(id);
+  var sel=document.getElementById("sm"+id);
+  var old=sel.value;
+  if(!old){toast("Select a sub-master first","err");return;}
+  var usedCount=0;
+  (DB.entries||[]).forEach(function(e){(e.items||[]).forEach(function(it){ if(it.master===m && it.submaster===old) usedCount++; });});
+  if(usedCount>0){
+    toast("Can't delete - "+usedCount+" saved item(s) still use \""+old+"\". Rename instead.","err");
+    return;
+  }
+  if(!confirm("Remove sub-master \""+old+"\" from the list?"))return;
+  DB.subs[m]=(DB.subs[m]||[]).filter(function(v){return v!==old;});
+  delete DB.items[m+"_"+old];
+  liSubs(id,m);
+  toast("Sub-master removed from list","ok");
+}
+
+function renIN(id){
+  var m=getIM(id);
+  var sm=document.getElementById("sm"+id).value;
+  if(!sm){toast("Select a sub-master first","err");return;}
+  var sel=document.getElementById("it"+id);
+  var old=sel.value;
+  if(!old){toast("Select an item name first","err");return;}
+  var n=prompt("Rename item \""+old+"\" to:",old);
+  if(!n||!n.trim()||n.trim()===old)return;
+  n=n.trim();
+  var k=m+"_"+sm;
+  if(!DB.items[k])DB.items[k]=[];
+  var idx=DB.items[k].indexOf(old);
+  if(idx>=0)DB.items[k][idx]=n; else DB.items[k].push(n);
+  DB.items[k]=DB.items[k].filter(function(v,i,a){return a.indexOf(v)===i;});
+  var changed=0;
+  (DB.entries||[]).forEach(function(e){
+    (e.items||[]).forEach(function(it){ if(it.master===m && it.submaster===sm && it.itemName===old){ it.itemName=n; changed++; } });
+  });
+  if(changed) dbVersion++;
+  liN(id);
+  document.getElementById("it"+id).value=n;
+  toast("Renamed item"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
+  if(changed) saveDr();
+}
+
+function delIN(id){
+  var m=getIM(id);
+  var sm=document.getElementById("sm"+id).value;
+  if(!sm){toast("Select a sub-master first","err");return;}
+  var sel=document.getElementById("it"+id);
+  var old=sel.value;
+  if(!old){toast("Select an item name first","err");return;}
+  var k=m+"_"+sm;
+  var usedCount=0;
+  (DB.entries||[]).forEach(function(e){(e.items||[]).forEach(function(it){ if(it.master===m && it.submaster===sm && it.itemName===old) usedCount++; });});
+  if(usedCount>0){
+    toast("Can't delete - "+usedCount+" saved item(s) still use \""+old+"\". Rename instead.","err");
+    return;
+  }
+  if(!confirm("Remove item name \""+old+"\" from the list?"))return;
+  DB.items[k]=(DB.items[k]||[]).filter(function(v){return v!==old;});
+  liN(id);
+  toast("Item name removed from list","ok");
+}
 function cT(id){var m=parseFloat(document.getElementById("mel"+id).value)||0;var w=parseFloat(document.getElementById("wst"+id).value)||0;document.getElementById("tun"+id).value=m||w?(m+w).toFixed(2):"";}
 function cDT(id){var m=parseFloat(document.getElementById("dmel"+id).value)||0;var w=parseFloat(document.getElementById("dwst"+id).value)||0;document.getElementById("dtun"+id).value=m||w?(m+w).toFixed(2):"";}
 function togV(id){iVer[id]=!iVer[id];var b=document.getElementById("vb"+id);b.classList.toggle("ok",iVer[id]);b.textContent=iVer[id]?"Verified":"Verify";}
