@@ -985,28 +985,57 @@ function viewQImgs(key){
 
 // ===== Multi-shot in-page camera - lets you snap several photos in one session
 // without the app kicking you out to the phone's camera app each time. =====
-var camStream=null, camTargetKey=null, camBatch=[];
+var camStream=null, camTargetKey=null, camBatch=[], camImageCapture=null;
 async function openCameraCapture(key){
-  camTargetKey=key; camBatch=[];
+  camTargetKey=key; camBatch=[]; camImageCapture=null;
   document.getElementById("camThumbs").innerHTML="";
   document.getElementById("camCount").textContent="0";
   document.getElementById("camModal").style.display="flex";
   try{
-    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
+    // Ask for the highest resolution the camera offers - a plain video stream
+    // defaults to a low-res preview feed unless explicitly requested higher.
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:"environment", width:{ideal:4096}, height:{ideal:2160} },
+      audio:false
+    });
     document.getElementById("camVideo").srcObject = camStream;
+    // ImageCapture.takePhoto() uses the camera's actual photo pipeline (same
+    // quality tier as the native camera app) instead of grabbing a frame from
+    // the lower-res live video preview. Falls back to video-frame capture
+    // below on browsers/devices that don't support it.
+    var track = camStream.getVideoTracks()[0];
+    if(track && typeof ImageCapture !== "undefined"){
+      try{ camImageCapture = new ImageCapture(track); }catch(e){ camImageCapture=null; }
+    }
   }catch(e){
     toast("Camera access failed: "+e.message,"err");
     closeCameraCapture();
   }
 }
 function captureShot(){
+  if(camImageCapture){
+    camImageCapture.takePhoto().then(function(blob){
+      var r=new FileReader();
+      r.onload=function(ev){ handleShotDataUrl(ev.target.result); };
+      r.readAsDataURL(blob);
+    }).catch(function(){
+      // Some devices advertise support but fail at capture time - fall back
+      captureShotFromVideoFrame();
+    });
+  } else {
+    captureShotFromVideoFrame();
+  }
+}
+function captureShotFromVideoFrame(){
   var video=document.getElementById("camVideo");
   if(!video.videoWidth)return;
   var c=document.createElement("canvas");
   c.width=video.videoWidth; c.height=video.videoHeight;
   c.getContext("2d").drawImage(video,0,0);
-  var dataUrl=c.toDataURL("image/jpeg",0.85);
-  compressImage(dataUrl,1280,0.75).then(function(src){
+  handleShotDataUrl(c.toDataURL("image/jpeg",0.92));
+}
+function handleShotDataUrl(dataUrl){
+  compressImage(dataUrl,1600,0.85).then(function(src){
     camBatch.push(src);
     document.getElementById("camCount").textContent=camBatch.length;
     var img=document.createElement("img");
@@ -1016,6 +1045,7 @@ function captureShot(){
 }
 function closeCameraCapture(){
   if(camStream){ camStream.getTracks().forEach(function(t){t.stop();}); camStream=null; }
+  camImageCapture=null;
   document.getElementById("camModal").style.display="none";
 }
 function doneCameraCapture(){
@@ -1196,8 +1226,17 @@ async function importFromContacts(){
       if(firmEl && !firmEl.value) firmEl.value = name;
     }
     if(c.tel && c.tel.length){
+      // Android often stores the same number multiple times (call/message/
+      // WhatsApp variants all pointing to one number) - dedupe by digits only
+      // so the same number doesn't get imported two or three times.
+      var seen = {};
+      var uniqueNums = [];
+      c.tel.forEach(function(num){
+        var norm = String(num).replace(/[^0-9]/g,"").replace(/^91(?=\d{10}$)/,""); // strip country code 91 if present with a 10-digit number
+        if(norm && !seen[norm]){ seen[norm]=true; uniqueNums.push(num); }
+      });
       var pwrap = document.getElementById("pwrap");
-      c.tel.forEach(function(num, i){
+      uniqueNums.forEach(function(num, i){
         if(i===0){
           var firstNumInput = pwrap.querySelector(".pr .pn");
           if(firstNumInput) firstNumInput.value = num;
