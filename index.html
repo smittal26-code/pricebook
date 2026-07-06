@@ -105,6 +105,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .qrow-fields input:read-only{background:var(--sur2);color:var(--txt3)}
 .qrow-actions{display:flex;align-items:center;gap:5px;margin-top:5px}
 .qicon{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:6px;background:var(--sur2);cursor:pointer;font-size:13px;flex-shrink:0}
+.qthumbbadge{display:none;align-items:center;font-size:11px;padding:3px 8px;border-radius:10px;background:var(--brand-l);color:var(--brand-d);cursor:pointer;white-space:nowrap}
 .qstars{display:flex;gap:1px;margin-left:auto}
 .qstars .star{font-size:14px;color:var(--bdr2);cursor:pointer}
 .qstars .star.lit{color:var(--brand)}
@@ -424,6 +425,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <button class="nb" onclick="goP('sup',this)" id="nb-sup"><span class="ni">&#127978;</span><span>Suppliers</span></button>
 </div>
 
+<div id="camModal" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column">
+  <video id="camVideo" autoplay playsinline muted style="flex:1;width:100%;object-fit:cover;background:#000"></video>
+  <div id="camThumbs" style="display:flex;gap:6px;padding:8px;overflow-x:auto;background:#111;min-height:44px"></div>
+  <div style="display:flex;gap:14px;padding:14px;background:#111;justify-content:center;align-items:center">
+    <button id="camCancelBtn" type="button" style="background:none;border:none;color:#fff;font-size:14px;padding:8px 10px">Cancel</button>
+    <button id="camShotBtn" type="button" style="width:62px;height:62px;border-radius:50%;background:#fff;border:4px solid #888"></button>
+    <button id="camDoneBtn" type="button" style="background:var(--brand);border:none;color:#fff;font-size:14px;padding:8px 14px;border-radius:8px;font-weight:600">Done (<span id="camCount">0</span>)</button>
+  </div>
+</div>
 <div class="lb" id="lb">
   <div class="lbtop">
     <div><div class="lbtitle" id="lbtitle"></div><div class="lbsub" id="lbsub"></div></div>
@@ -877,12 +887,11 @@ function renderQuickTable(id,m,sm){
     h+='<input type="text" inputmode="decimal" class="qlab" placeholder="Labour" data-key="'+key+'" maxlength="5">';
     h+='</div>';
     h+='<div class="qrow-actions">';
-    h+='<button type="button" class="qicon" data-qcam="'+key+'" title="Camera">&#128247;</button>';
+    h+='<button type="button" class="qicon" data-qcam="'+key+'" title="Camera - take multiple photos">&#128247;</button>';
     h+='<label class="qicon" title="Gallery" style="cursor:pointer"><input type="file" accept="image/*" multiple data-qgal="'+key+'" style="display:none">&#128444;</label>';
-    h+='<input type="file" accept="image/*" capture="environment" data-qcamin="'+key+'" style="display:none">';
+    h+='<span class="qthumbbadge" id="qth_'+key+'" data-qview="'+key+'" style="display:none"></span>';
     h+='<span class="qstars" data-qstars="'+key+'">'+[1,2,3,4,5].map(function(n){return '<span class="star" data-n="'+n+'">&#9733;</span>';}).join('')+'</span>';
     h+='</div>';
-    h+='<div class="qthumbs" id="qth_'+key+'"></div>';
     h+='</div>';
   });
   h+='<button type="button" class="btn xs ghost" data-qadd="'+id+'" style="margin-top:2px">+ Add item name</button>';
@@ -901,11 +910,16 @@ function wireQuickTable(id,wrap){
   });
   wrap.querySelectorAll("[data-qcam]").forEach(function(btn){
     var key=btn.getAttribute("data-qcam");
-    btn.onclick=function(){ wrap.querySelector("[data-qcamin='"+key+"']").click(); };
+    btn.onclick=function(){ openCameraCapture(key); };
   });
-  wrap.querySelectorAll("[data-qcamin],[data-qgal]").forEach(function(inp){
-    var key=inp.getAttribute("data-qcamin")||inp.getAttribute("data-qgal");
+  wrap.querySelectorAll("[data-qgal]").forEach(function(inp){
+    var key=inp.getAttribute("data-qgal");
     inp.onchange=function(e){ addQIPhs(e,key); };
+  });
+  wrap.querySelectorAll("[data-qview]").forEach(function(b){
+    var key=b.getAttribute("data-qview");
+    b.onclick=function(){ viewQImgs(key); };
+    updateQThumbBadge(key);
   });
   wrap.querySelectorAll("[data-qstars]").forEach(function(sw){
     var key=sw.getAttribute("data-qstars");
@@ -946,13 +960,75 @@ function addQIPhs(e,key){
     r.onload=function(ev){
       compressImage(ev.target.result,1280,0.75).then(function(src){
         qImgs[key].push({src:src,stars:0});
-        var th=document.getElementById("qth_"+key);
-        if(th){ var img=document.createElement("img"); img.src=src; th.appendChild(img); }
+        updateQThumbBadge(key);
       });
     };
     r.readAsDataURL(f);
   });
 }
+
+function updateQThumbBadge(key){
+  var badge=document.getElementById("qth_"+key);
+  if(!badge)return;
+  var n=(qImgs[key]||[]).length;
+  if(n>0){ badge.style.display="inline-flex"; badge.innerHTML="&#128247; "+n; }
+  else { badge.style.display="none"; }
+}
+
+function viewQImgs(key){
+  var imgs=qImgs[key]||[];
+  if(!imgs.length)return;
+  var srcs=imgs.map(function(im){return im.src;});
+  var metas=imgs.map(function(im){return {itemName:"",supName:"",date:"",tunch:"",wastage:"",melting:"",labour:"",meltingVerified:false,stars:im.stars||0};});
+  openLB(srcs,metas,0);
+}
+
+// ===== Multi-shot in-page camera - lets you snap several photos in one session
+// without the app kicking you out to the phone's camera app each time. =====
+var camStream=null, camTargetKey=null, camBatch=[];
+async function openCameraCapture(key){
+  camTargetKey=key; camBatch=[];
+  document.getElementById("camThumbs").innerHTML="";
+  document.getElementById("camCount").textContent="0";
+  document.getElementById("camModal").style.display="flex";
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
+    document.getElementById("camVideo").srcObject = camStream;
+  }catch(e){
+    toast("Camera access failed: "+e.message,"err");
+    closeCameraCapture();
+  }
+}
+function captureShot(){
+  var video=document.getElementById("camVideo");
+  if(!video.videoWidth)return;
+  var c=document.createElement("canvas");
+  c.width=video.videoWidth; c.height=video.videoHeight;
+  c.getContext("2d").drawImage(video,0,0);
+  var dataUrl=c.toDataURL("image/jpeg",0.85);
+  compressImage(dataUrl,1280,0.75).then(function(src){
+    camBatch.push(src);
+    document.getElementById("camCount").textContent=camBatch.length;
+    var img=document.createElement("img");
+    img.src=src; img.style.cssText="width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0";
+    document.getElementById("camThumbs").appendChild(img);
+  });
+}
+function closeCameraCapture(){
+  if(camStream){ camStream.getTracks().forEach(function(t){t.stop();}); camStream=null; }
+  document.getElementById("camModal").style.display="none";
+}
+function doneCameraCapture(){
+  if(camTargetKey && camBatch.length){
+    if(!qImgs[camTargetKey]) qImgs[camTargetKey]=[];
+    camBatch.forEach(function(src){ qImgs[camTargetKey].push({src:src,stars:0}); });
+    updateQThumbBadge(camTargetKey);
+  }
+  closeCameraCapture();
+}
+document.getElementById("camShotBtn").onclick=captureShot;
+document.getElementById("camDoneBtn").onclick=doneCameraCapture;
+document.getElementById("camCancelBtn").onclick=closeCameraCapture;
 function liN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;var s=document.getElementById("it"+id);var p=s.value;s.innerHTML='<option value="">--</option>';var k=m+"_"+sm;(DB.items[k]||[]).forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});if(p)s.value=p;}
 function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());saveDr();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();onSMChange(id);toast("Sub-master added","ok");}
 function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());saveDr();}if(m==="diamond"){liN(id);document.getElementById("it"+id).value=n.trim();}else{renderQuickTable(id,m,sm);}toast("Item added","ok");}
@@ -1203,8 +1279,9 @@ function colItems(){
       qwrap.querySelectorAll(".qrow").forEach(function(row){
         var wst=row.querySelector(".qwst").value.trim();
         var lab=row.querySelector(".qlab").value.trim();
-        if(!wst && !lab) return;
         var key=row.querySelector(".qmel").getAttribute("data-key");
+        var hasPhotos=(qImgs[key]||[]).length>0;
+        if(!wst && !lab && !hasPhotos) return;
         var nm=row.querySelector(".qrow-name span").textContent;
         items.push({
           master:m,
