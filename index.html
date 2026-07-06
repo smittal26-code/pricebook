@@ -106,6 +106,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .qrow-actions{display:flex;align-items:center;gap:5px;margin-top:5px}
 .qicon{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:6px;background:var(--sur2);cursor:pointer;font-size:13px;flex-shrink:0}
 .qthumbbadge{display:none;align-items:center;font-size:11px;padding:3px 8px;border-radius:10px;background:var(--brand-l);color:var(--brand-d);cursor:pointer;white-space:nowrap}
+.vidplayicon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;background:rgba(0,0,0,.55);border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;pointer-events:none}
 .qstars{display:flex;gap:1px;margin-left:auto}
 .qstars .star{font-size:14px;color:var(--bdr2);cursor:pointer}
 .qstars .star.lit{color:var(--brand)}
@@ -428,9 +429,10 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 <div id="camModal" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column">
   <video id="camVideo" autoplay playsinline muted style="flex:1;width:100%;object-fit:cover;background:#000"></video>
   <div id="camThumbs" style="display:flex;gap:6px;padding:8px;overflow-x:auto;background:#111;min-height:44px"></div>
-  <div style="display:flex;gap:14px;padding:14px;background:#111;justify-content:center;align-items:center">
+  <div style="display:flex;gap:8px;padding:10px;background:#111;justify-content:center;align-items:center;flex-wrap:wrap">
     <button id="camCancelBtn" type="button" style="background:none;border:none;color:#fff;font-size:14px;padding:8px 10px">Cancel</button>
     <button id="camShotBtn" type="button" style="width:62px;height:62px;border-radius:50%;background:#fff;border:4px solid #888"></button>
+    <button id="camVidBtn" type="button" style="background:#333;border:1px solid #666;color:#fff;font-size:12px;padding:8px 10px;border-radius:8px;white-space:nowrap">&#127909; Video</button>
     <button id="camDoneBtn" type="button" style="background:var(--brand);border:none;color:#fff;font-size:14px;padding:8px 14px;border-radius:8px;font-weight:600">Done (<span id="camCount">0</span>)</button>
   </div>
 </div>
@@ -441,7 +443,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   </div>
   <div class="zlevel" id="zlvl">100%</div>
   <div class="zhint" id="zhint">Pinch to zoom - Double-tap to fit</div>
-  <div class="lbcanvas" id="lbcanvas"><img id="lbimg" draggable="false"></div>
+  <div class="lbcanvas" id="lbcanvas"><img id="lbimg" draggable="false"><video id="lbvid" controls playsinline style="display:none;max-width:100%;max-height:100%"></video></div>
   <div class="zctrl">
     <button class="zcbtn" onclick="zstep(1.3)">+</button>
     <button class="zcbtn" onclick="zreset()" style="font-size:11px">1:1</button>
@@ -888,7 +890,7 @@ function renderQuickTable(id,m,sm){
     h+='</div>';
     h+='<div class="qrow-actions">';
     h+='<button type="button" class="qicon" data-qcam="'+key+'" title="Camera - take multiple photos">&#128247;</button>';
-    h+='<label class="qicon" title="Gallery" style="cursor:pointer"><input type="file" accept="image/*" multiple data-qgal="'+key+'" style="display:none">&#128444;</label>';
+    h+='<label class="qicon" title="Gallery" style="cursor:pointer"><input type="file" accept="image/*,video/*" multiple data-qgal="'+key+'" style="display:none">&#128444;</label>';
     h+='<span class="qthumbbadge" id="qth_'+key+'" data-qview="'+key+'" style="display:none"></span>';
     h+='<span class="qstars" data-qstars="'+key+'">'+[1,2,3,4,5].map(function(n){return '<span class="star" data-n="'+n+'">&#9733;</span>';}).join('')+'</span>';
     h+='</div>';
@@ -956,12 +958,18 @@ function qCalcTunch(key){
 function addQIPhs(e,key){
   if(!qImgs[key])qImgs[key]=[];
   Array.from(e.target.files).forEach(function(f){
+    var isVideo = f.type.indexOf("video")===0;
     var r=new FileReader();
     r.onload=function(ev){
-      compressImage(ev.target.result,1280,0.75).then(function(src){
-        qImgs[key].push({src:src,stars:0});
+      if(isVideo){
+        qImgs[key].push({src:ev.target.result,stars:0,type:"video"});
         updateQThumbBadge(key);
-      });
+      } else {
+        compressImage(ev.target.result,1280,0.75).then(function(src){
+          qImgs[key].push({src:src,stars:0,type:"image"});
+          updateQThumbBadge(key);
+        });
+      }
     };
     r.readAsDataURL(f);
   });
@@ -979,7 +987,7 @@ function viewQImgs(key){
   var imgs=qImgs[key]||[];
   if(!imgs.length)return;
   var srcs=imgs.map(function(im){return im.src;});
-  var metas=imgs.map(function(im){return {itemName:"",supName:"",date:"",tunch:"",wastage:"",melting:"",labour:"",meltingVerified:false,stars:im.stars||0};});
+  var metas=imgs.map(function(im){return {itemName:"",supName:"",date:"",tunch:"",wastage:"",melting:"",labour:"",meltingVerified:false,stars:im.stars||0,mediaType:im.type||"image"};});
   openLB(srcs,metas,0);
 }
 
@@ -990,13 +998,17 @@ async function openCameraCapture(key){
   camTargetKey=key; camBatch=[]; camImageCapture=null;
   document.getElementById("camThumbs").innerHTML="";
   document.getElementById("camCount").textContent="0";
+  document.getElementById("camShotBtn").style.display="";
+  document.getElementById("camDoneBtn").disabled=false;
+  document.getElementById("camDoneBtn").style.opacity="1";
+  var vb0=document.getElementById("camVidBtn"); vb0.style.background="#333"; vb0.innerHTML="&#127909; Video";
   document.getElementById("camModal").style.display="flex";
   try{
     // Ask for the highest resolution the camera offers - a plain video stream
     // defaults to a low-res preview feed unless explicitly requested higher.
     camStream = await navigator.mediaDevices.getUserMedia({
       video:{ facingMode:"environment", width:{ideal:4096}, height:{ideal:2160} },
-      audio:false
+      audio:true
     });
     document.getElementById("camVideo").srcObject = camStream;
     // ImageCapture.takePhoto() uses the camera's actual photo pipeline (same
@@ -1016,7 +1028,7 @@ function captureShot(){
   if(camImageCapture){
     camImageCapture.takePhoto().then(function(blob){
       var r=new FileReader();
-      r.onload=function(ev){ handleShotDataUrl(ev.target.result); };
+      r.onload=function(ev){ handleShotDataUrl(ev.target.result,"image"); };
       r.readAsDataURL(blob);
     }).catch(function(){
       // Some devices advertise support but fail at capture time - fall back
@@ -1032,11 +1044,73 @@ function captureShotFromVideoFrame(){
   var c=document.createElement("canvas");
   c.width=video.videoWidth; c.height=video.videoHeight;
   c.getContext("2d").drawImage(video,0,0);
-  handleShotDataUrl(c.toDataURL("image/jpeg",0.92));
+  handleShotDataUrl(c.toDataURL("image/jpeg",0.92),"image");
 }
-function handleShotDataUrl(dataUrl){
+
+// Video recording - tap once to start, tap again to stop. Uses the same live
+// camStream already open for photos, so no extra permission prompt needed
+// (beyond the initial mic access requested when the camera opened).
+var camRecorder=null, camRecordedChunks=[], camRecording=false, camRecordTimer=null, camRecordStart=0;
+function toggleVideoRecord(){
+  if(camRecording){ stopVideoRecord(); } else { startVideoRecord(); }
+}
+function startVideoRecord(){
+  if(!camStream)return;
+  camRecordedChunks=[];
+  var mimeType="video/webm;codecs=vp9";
+  if(!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mimeType))) mimeType="video/webm";
+  if(!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mimeType))) mimeType="";
+  try{
+    camRecorder = mimeType ? new MediaRecorder(camStream,{mimeType:mimeType}) : new MediaRecorder(camStream);
+  }catch(e){
+    toast("Video recording isn't supported on this device","err");
+    return;
+  }
+  camRecorder.ondataavailable=function(e){ if(e.data && e.data.size>0) camRecordedChunks.push(e.data); };
+  camRecorder.onstop=function(){
+    var blob=new Blob(camRecordedChunks,{type:camRecorder.mimeType||"video/webm"});
+    var r=new FileReader();
+    r.onload=function(ev){ handleShotDataUrl(ev.target.result,"video"); };
+    r.readAsDataURL(blob);
+  };
+  camRecorder.start();
+  camRecording=true;
+  document.getElementById("camShotBtn").style.display="none";
+  document.getElementById("camDoneBtn").disabled=true;
+  document.getElementById("camDoneBtn").style.opacity="0.5";
+  var vb=document.getElementById("camVidBtn");
+  vb.style.background="#c0392b";
+  camRecordStart=Date.now();
+  vb.textContent="\u23F9 Stop (0s)";
+  camRecordTimer=setInterval(function(){
+    var secs=Math.floor((Date.now()-camRecordStart)/1000);
+    vb.textContent="\u23F9 Stop ("+secs+"s)";
+  },500);
+}
+function stopVideoRecord(){
+  if(camRecorder && camRecording){ camRecorder.stop(); }
+  camRecording=false;
+  clearInterval(camRecordTimer);
+  document.getElementById("camShotBtn").style.display="";
+  document.getElementById("camDoneBtn").disabled=false;
+  document.getElementById("camDoneBtn").style.opacity="1";
+  var vb=document.getElementById("camVidBtn");
+  vb.style.background="#333";
+  vb.innerHTML="&#127909; Video";
+}
+
+function handleShotDataUrl(dataUrl,type){
+  if(type==="video"){
+    camBatch.push({type:"video",src:dataUrl});
+    document.getElementById("camCount").textContent=camBatch.length;
+    var vwrap=document.createElement("div");
+    vwrap.style.cssText="width:44px;height:44px;border-radius:5px;background:#333;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;color:#fff";
+    vwrap.innerHTML="&#127909;";
+    document.getElementById("camThumbs").appendChild(vwrap);
+    return;
+  }
   compressImage(dataUrl,1600,0.85).then(function(src){
-    camBatch.push(src);
+    camBatch.push({type:"image",src:src});
     document.getElementById("camCount").textContent=camBatch.length;
     var img=document.createElement("img");
     img.src=src; img.style.cssText="width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0";
@@ -1044,6 +1118,7 @@ function handleShotDataUrl(dataUrl){
   });
 }
 function closeCameraCapture(){
+  if(camRecording) stopVideoRecord();
   if(camStream){ camStream.getTracks().forEach(function(t){t.stop();}); camStream=null; }
   camImageCapture=null;
   document.getElementById("camModal").style.display="none";
@@ -1051,17 +1126,18 @@ function closeCameraCapture(){
 function doneCameraCapture(){
   if(camTargetKey && camBatch.length){
     if(!qImgs[camTargetKey]) qImgs[camTargetKey]=[];
-    camBatch.forEach(function(src){ qImgs[camTargetKey].push({src:src,stars:0}); });
+    camBatch.forEach(function(item){ qImgs[camTargetKey].push({src:item.src,stars:0,type:item.type||"image"}); });
     updateQThumbBadge(camTargetKey);
   }
   closeCameraCapture();
 }
 document.getElementById("camShotBtn").onclick=captureShot;
+document.getElementById("camVidBtn").onclick=toggleVideoRecord;
 document.getElementById("camDoneBtn").onclick=doneCameraCapture;
 document.getElementById("camCancelBtn").onclick=closeCameraCapture;
 function liN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;var s=document.getElementById("it"+id);var p=s.value;s.innerHTML='<option value="">--</option>';var k=m+"_"+sm;(DB.items[k]||[]).forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});if(p)s.value=p;}
-function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());saveDr();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();onSMChange(id);toast("Sub-master added","ok");}
-function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());saveDr();}if(m==="diamond"){liN(id);document.getElementById("it"+id).value=n.trim();}else{renderQuickTable(id,m,sm);}toast("Item added","ok");}
+function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());queueSync();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();onSMChange(id);toast("Sub-master added","ok");}
+function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());queueSync();}if(m==="diamond"){liN(id);document.getElementById("it"+id).value=n.trim();}else{renderQuickTable(id,m,sm);}toast("Item added","ok");}
 
 // Rename/delete for the sub-master and item-name picklists. Renaming also
 // updates every already-saved entry that used the old name, so Browse,
@@ -1092,7 +1168,7 @@ function renSM(id){
   document.getElementById("sm"+id).value=n;
   onSMChange(id);
   toast("Renamed sub-master"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
-  saveDr();
+  queueSync();
 }
 
 function delSM(id){
@@ -1111,7 +1187,7 @@ function delSM(id){
   delete DB.items[m+"_"+old];
   liSubs(id,m);
   toast("Sub-master removed from list","ok");
-  saveDr();
+  queueSync();
 }
 
 function renIN(id, forcedOld){
@@ -1138,7 +1214,7 @@ function renIN(id, forcedOld){
   if(m==="diamond"){ liN(id); document.getElementById("it"+id).value=n; }
   else { renderQuickTable(id,m,sm); }
   toast("Renamed item"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
-  saveDr();
+  queueSync();
 }
 
 function delIN(id, forcedOld){
@@ -1160,7 +1236,7 @@ function delIN(id, forcedOld){
   DB.items[k]=(DB.items[k]||[]).filter(function(v){return v!==old;});
   if(m==="diamond"){ liN(id); } else { renderQuickTable(id,m,sm); }
   toast("Item name removed from list","ok");
-  saveDr();
+  queueSync();
 }
 function cT(id){var m=parseFloat(document.getElementById("mel"+id).value)||0;var w=parseFloat(document.getElementById("wst"+id).value)||0;document.getElementById("tun"+id).value=m||w?(m+w).toFixed(2):"";}
 function cDT(id){var m=parseFloat(document.getElementById("dmel"+id).value)||0;var w=parseFloat(document.getElementById("dwst"+id).value)||0;document.getElementById("dtun"+id).value=m||w?(m+w).toFixed(2):"";}
@@ -1349,7 +1425,7 @@ async function saveAll(){
   var btn=document.getElementById("saveEntryBtn");
   if(btn){btn.disabled=true;btn.style.opacity="0.6";}
   try{
-    var items=colItems();var entry={id:String(Date.now()),supplier:sup,items:items,savedAt:new Date().toISOString()};DB.entries.push(entry);dbVersion++;await saveDr();toast("Saved: "+(sup.firm||(sup.contacts[0]||{}).name||"Entry")+" - "+items.length+" item(s)","ok");setTimeout(clearAll,900);
+    var items=colItems();var entry={id:String(Date.now()),supplier:sup,items:items,savedAt:new Date().toISOString()};DB.entries.push(entry);dbVersion++;queueSync();toast("Saved: "+(sup.firm||(sup.contacts[0]||{}).name||"Entry")+" - "+items.length+" item(s) - syncing to Drive","ok");setTimeout(clearAll,400);
   } finally {
     window._savingEntry=false;
     if(btn){btn.disabled=false;btn.style.opacity="1";}
@@ -1443,7 +1519,7 @@ var _catTreeCache=null,_catTreeCacheKey=null;
 function buildCatTree(){
   var key=dbVersion+"|"+(catMaster||"");
   if(_catTreeCache && _catTreeCacheKey===key) return _catTreeCache;
-  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;tree[sm][itN].push({src:src,stars:stars,itemName:itN,submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;tree[sm][itN].push({src:src,stars:stars,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
+  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
   _catTreeCache=tree;_catTreeCacheKey=key;
   return tree;
 }
@@ -1542,9 +1618,19 @@ function renderCat(){
         card.className = view==="scroll" ? "sitem" : "gitem";
         card.setAttribute("data-src", img.src);
 
-        var imgEl=document.createElement("img");
-        imgEl.src=img.src;imgEl.loading="lazy";
-        card.appendChild(imgEl);
+        if(img.mediaType==="video"){
+          var vidEl=document.createElement("video");
+          vidEl.src=img.src;vidEl.muted=true;vidEl.playsInline=true;vidEl.preload="metadata";
+          card.appendChild(vidEl);
+          var playIcon=document.createElement("div");
+          playIcon.className="vidplayicon";
+          playIcon.innerHTML="&#9654;";
+          card.appendChild(playIcon);
+        } else {
+          var imgEl=document.createElement("img");
+          imgEl.src=img.src;imgEl.loading="lazy";
+          card.appendChild(imgEl);
+        }
 
         var st=img.stars||0;
         if(st>0){
@@ -1588,11 +1674,11 @@ function renderCat(){
 function togSec(bid,aid){var b=document.getElementById(bid),a=document.getElementById(aid),h=b.style.display==="none";b.style.display=h?"block":"none";a.textContent=h?"^":"v";}
 
 function openLB(srcs,metas,idx){lbImgs=srcs;lbMeta=metas;lbIdx=idx;document.getElementById("lb").classList.add("open");document.body.style.overflow="hidden";loadLBImg(idx);buildStrip(srcs,idx);showHint("Pinch to zoom - Double-tap to fit");}
-function loadLBImg(idx){lbIdx=idx;var meta=lbMeta[idx]||{};document.getElementById("lbimg").src=lbImgs[idx];document.getElementById("lbtitle").textContent=meta.itemName||"Image";document.getElementById("lbsub").textContent=meta.supName||(meta.date?meta.date:"");var n=meta.stars||0;document.querySelectorAll("#lbstars .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});document.querySelectorAll(".lbthumb").forEach(function(t,i){t.classList.toggle("active",i===idx);});zreset(false);}
-function buildStrip(srcs,active){var strip=document.getElementById("lbstrip");if(srcs.length<=1){strip.style.display="none";return;}strip.style.display="flex";strip.innerHTML=srcs.map(function(s,i){return'<img class="lbthumb'+(i===active?" active":"")+'" src="'+s+'" onclick="loadLBImg('+i+')">';}).join("");}
-function closeLB(){document.getElementById("lb").classList.remove("open");document.body.style.overflow="";lbImgs=[];lbMeta=[];lbIdx=0;document.getElementById("infopanel").classList.remove("open");}
+function loadLBImg(idx){lbIdx=idx;var meta=lbMeta[idx]||{};var isVid=meta.mediaType==="video";var imgEl=document.getElementById("lbimg"),vidEl=document.getElementById("lbvid");if(isVid){vidEl.pause();vidEl.src=lbImgs[idx];vidEl.style.display="block";imgEl.style.display="none";}else{vidEl.pause();vidEl.removeAttribute("src");vidEl.style.display="none";imgEl.style.display="block";imgEl.src=lbImgs[idx];}document.getElementById("lbtitle").textContent=meta.itemName||"Image";document.getElementById("lbsub").textContent=meta.supName||(meta.date?meta.date:"");var n=meta.stars||0;document.querySelectorAll("#lbstars .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});document.querySelectorAll(".lbthumb").forEach(function(t,i){t.classList.toggle("active",i===idx);});zreset(false);}
+function buildStrip(srcs,active){var strip=document.getElementById("lbstrip");if(srcs.length<=1){strip.style.display="none";return;}strip.style.display="flex";strip.innerHTML=srcs.map(function(s,i){var isVid=(lbMeta[i]||{}).mediaType==="video";return isVid?'<div class="lbthumb'+(i===active?" active":"")+'" style="background:#222;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff" onclick="loadLBImg('+i+')">&#127909;</div>':'<img class="lbthumb'+(i===active?" active":"")+'" src="'+s+'" onclick="loadLBImg('+i+')">';}).join("");}
+function closeLB(){document.getElementById("lbvid").pause();document.getElementById("lb").classList.remove("open");document.body.style.overflow="";lbImgs=[];lbMeta=[];lbIdx=0;document.getElementById("infopanel").classList.remove("open");}
 
-function setImgStar(n){var meta=lbMeta[lbIdx];if(!meta)return;meta.stars=n;document.querySelectorAll("#lbstars .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});if(meta.entryId){var e=DB.entries.find(function(x){return x.id===meta.entryId;});if(e&&e.items[meta.itemIdx]){var img=e.items[meta.itemIdx].images[meta.imgIdx];if(typeof img==="object")img.stars=n;else e.items[meta.itemIdx].images[meta.imgIdx]={src:img,stars:n};dbVersion++;saveDr();}}toast("Image rated "+n+" stars","ok");}
+function setImgStar(n){var meta=lbMeta[lbIdx];if(!meta)return;meta.stars=n;document.querySelectorAll("#lbstars .star").forEach(function(s,i){s.classList.toggle("lit",i<n);});if(meta.entryId){var e=DB.entries.find(function(x){return x.id===meta.entryId;});if(e&&e.items[meta.itemIdx]){var img=e.items[meta.itemIdx].images[meta.imgIdx];if(typeof img==="object")img.stars=n;else e.items[meta.itemIdx].images[meta.imgIdx]={src:img,stars:n};dbVersion++;queueSync();}}toast("Image rated "+n+" stars","ok");}
 function toggleInfo(){var p=document.getElementById("infopanel");if(p.classList.contains("open")){p.classList.remove("open");return;}var meta=lbMeta[lbIdx]||{};var rows=[{l:"Item",v:meta.itemName||"--"},{l:"Supplier",v:meta.supName||"--"},{l:"Date",v:meta.date||"--"},{l:"Melting",v:(meta.melting||"--")+(meta.meltingVerified?" V":"")},{l:"Wastage",v:meta.wastage||"--"},{l:"Tunch",v:meta.tunch||"--"},{l:"Labour",v:meta.labour||"--"},{l:"Image Stars",v:(meta.stars||0)+" star"+(meta.stars===1?"":"s")}];document.getElementById("inforows").innerHTML=rows.map(function(r){return'<div class="inforow"><div class="infolbl">'+r.l+'</div><div class="infoval">'+esc(String(r.v))+"</div></div>";}).join("");p.classList.add("open");}
 
 function applyZ(anim){var img=document.getElementById("lbimg");img.style.transition=anim?"transform .25s ease":"none";img.style.transform="translate("+Z.ox+"px,"+Z.oy+"px) scale("+Z.scale+")";}
@@ -1609,7 +1695,7 @@ cv.addEventListener("touchend",function(e){if(e.touches.length<2)PinchSt.on=fals
 cv.addEventListener("wheel",function(e){e.preventDefault();zstep(e.deltaY<0?1.15:0.87);},{passive:false});
 document.addEventListener("keydown",function(e){if(!document.getElementById("lb").classList.contains("open"))return;if(e.key==="Escape")closeLB();if(e.key==="ArrowRight"&&lbIdx<lbImgs.length-1)loadLBImg(lbIdx+1);if(e.key==="ArrowLeft"&&lbIdx>0)loadLBImg(lbIdx-1);if(e.key==="+"||e.key==="=")zstep(1.3);if(e.key==="-")zstep(0.77);if(e.key==="0")zreset();});
 
-function waImg(src,title){if(navigator.share){fetch(src).then(function(r){return r.blob();}).then(function(blob){var f=new File([blob],(title||"jewellery")+".jpg",{type:"image/jpeg"});if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:title||"",text:title||""}).then(function(){toast("Shared","ok");}).catch(function(){waFB(title);});}else waFB(title);}).catch(function(){waFB(title);});}else waFB(title);}
+function waImg(src,title){if(navigator.share){fetch(src).then(function(r){return r.blob();}).then(function(blob){var mime=blob.type||"image/jpeg";var ext=mime.indexOf("video")===0?(mime.indexOf("mp4")>-1?"mp4":"webm"):(mime.indexOf("png")>-1?"png":"jpg");var f=new File([blob],(title||"jewellery")+"."+ext,{type:mime});if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:title||"",text:title||""}).then(function(){toast("Shared","ok");}).catch(function(){waFB(title);});}else waFB(title);}).catch(function(){waFB(title);});}else waFB(title);}
 function waFB(t){window.open("https://wa.me/?text="+encodeURIComponent("*"+(t||"Jewellery image")+"*\n\nSent from Jewellery Price Book"),"_blank");toast("WhatsApp opened","ok");}
 function waShareCur(){waImg(lbImgs[lbIdx],document.getElementById("lbtitle").textContent);}
 function dlCur(){var a=document.createElement("a");a.href=lbImgs[lbIdx];a.download=(document.getElementById("lbtitle").textContent||"image")+".jpg";document.body.appendChild(a);a.click();a.remove();}
@@ -2038,11 +2124,69 @@ async function loadFromDrive(){
   }
 }
 
+// ===== Background sync queue =====
+// Any function that changes data calls queueSync() instead of saveDr()
+// directly. This returns immediately - the actual Drive upload happens in
+// the background and keeps retrying (with backoff) until it succeeds, so
+// slow networks or big files never block the next thing you want to do.
+var syncDirty = false;
+var syncInProgress = false;
+var syncRetryDelay = 3000; // grows on repeated failures, resets on success
+var syncRetryTimer = null;
+
+function queueSync(){
+  syncDirty = true;
+  updateSyncBadge();
+  if(!syncInProgress) runSyncLoop();
+}
+
+async function runSyncLoop(){
+  syncInProgress = true;
+  while(syncDirty){
+    syncDirty = false;
+    if(!navigator.onLine){
+      // No point trying yet - wait for the browser to tell us we're back online
+      syncDirty = true;
+      updateSyncBadge();
+      break;
+    }
+    try{
+      await saveDr();
+      syncRetryDelay = 3000; // reset backoff after a success
+    }catch(e){
+      syncDirty = true; // still have unsaved changes - try again shortly
+      updateSyncBadge();
+      await new Promise(function(res){ syncRetryTimer = setTimeout(res, syncRetryDelay); });
+      syncRetryDelay = Math.min(syncRetryDelay * 1.6, 60000); // cap backoff at 60s
+    }
+  }
+  syncInProgress = false;
+  updateSyncBadge();
+}
+
+window.addEventListener("online", function(){
+  if(syncDirty && !syncInProgress){
+    clearTimeout(syncRetryTimer);
+    syncRetryDelay = 3000;
+    runSyncLoop();
+  }
+});
+
+function updateSyncBadge(){
+  var el = document.getElementById("dpill");
+  if(!el) return;
+  if(syncInProgress){
+    setDP("loading","...","Saving changes...");
+  } else if(syncDirty){
+    setDP("err","!", navigator.onLine ? "Retrying save..." : "Offline - will save when back online");
+  }
+  // if neither dirty nor in progress, whatever saveDr() last set (e.g. "Drive synced") stays as-is
+}
+
 async function saveDr(){
   if(!gAccessToken){
-    toast("Tap the Drive pill at top right to connect first","err");
     setDP("err","!","Tap to connect");
-    return;
+    throw new Error("Not connected to Drive yet");
   }
   setDP("loading","...","Uploading images...");
   try{
@@ -2085,8 +2229,8 @@ async function saveDr(){
     setDP("ok","OK","Saved to Drive");
     toast("Saved to Google Drive","ok");
   } catch(e){
-    setDP("err","!","Save failed");
-    toast("Save failed: "+e.message,"err");
+    setDP("err","!","Save failed - retrying");
+    throw e;
   }
 }
 
