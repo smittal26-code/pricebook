@@ -96,6 +96,20 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .idrop:hover{border-color:var(--brand)}
 .idrop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .thumbs{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.qrow{border:1px solid var(--bdr);border-radius:8px;padding:7px 8px;margin-bottom:6px;background:var(--sur)}
+.qrow-name{display:flex;align-items:center;gap:5px;font-weight:600;font-size:13px;margin-bottom:5px}
+.qrow-name span{flex:1;overflow-wrap:anywhere}
+.qminibtn{width:20px;height:20px;border:none;background:none;font-size:12px;cursor:pointer;color:var(--txt3);flex-shrink:0;padding:0}
+.qrow-fields{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px}
+.qrow-fields input{width:100%;padding:5px 3px;font-size:12px;border:1px solid var(--bdr);border-radius:6px;text-align:center;background:var(--sur)}
+.qrow-fields input:read-only{background:var(--sur2);color:var(--txt3)}
+.qrow-actions{display:flex;align-items:center;gap:5px;margin-top:5px}
+.qicon{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:6px;background:var(--sur2);cursor:pointer;font-size:13px;flex-shrink:0}
+.qstars{display:flex;gap:1px;margin-left:auto}
+.qstars .star{font-size:14px;color:var(--bdr2);cursor:pointer}
+.qstars .star.lit{color:var(--brand)}
+.qthumbs{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.qthumbs img{width:30px;height:30px;object-fit:cover;border-radius:5px}
 .thumb{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--bdr);cursor:pointer}
 .iblock{border:1px solid var(--bdr);border-radius:var(--rlg);padding:12px;margin-bottom:9px;background:var(--sur2)}
 .iblock.g{border-left:3px solid var(--gold)}
@@ -300,7 +314,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       </div>
       <div class="shead" style="margin-top:5px"><div class="slbl" style="margin:0">Phone numbers</div><button class="btn xs ghost" onclick="addPR()">+ Add</button></div>
       <div id="pwrap" style="margin-top:6px">
-        <div class="pr" id="pr0"><div class="fg"><label>Type</label><select class="pt"><option value="mobile">Mobile</option><option value="whatsapp">WhatsApp</option><option value="office">Office</option><option value="other">Other</option></select></div><div class="fg"><label>Number</label><input type="tel" class="pn" placeholder="9968544652"></div><button class="btn sm dan" onclick="rm('pr0')" style="margin-top:16px">&#128465;</button></div>
+        <div class="pr" id="pr0"><div class="fg"><label>Type</label><select class="pt" onchange="this.nextElementSibling.style.display=this.value==='other'?'block':'none'"><option value="mobile">Mobile</option><option value="whatsapp">WhatsApp</option><option value="office">Office</option><option value="other">Other</option></select><input type="text" class="pto" placeholder="e.g. Fax" style="display:none;margin-top:5px"></div><div class="fg"><label>Number</label><input type="tel" class="pn" placeholder="9968544652"></div><button class="btn sm dan" onclick="rm('pr0')" style="margin-top:16px">&#128465;</button></div>
       </div>
       <div class="fg" style="margin-top:5px"><label>Address</label><textarea id="saddr" placeholder="1167/103 Kucha Mahajani" rows="2"></textarea></div>
       <div class="div"></div>
@@ -633,7 +647,11 @@ function fillCard(d){
         if(p.type===t)opt.selected=true;
         sel.appendChild(opt);
       });
-      fg1.appendChild(lbl1);fg1.appendChild(sel);
+      var custom=document.createElement("input");
+      custom.type="text";custom.className="pto";custom.placeholder="e.g. Fax";
+      custom.style.display=sel.value==="other"?"block":"none";custom.style.marginTop="5px";
+      sel.onchange=function(){ custom.style.display = sel.value==="other" ? "block" : "none"; };
+      fg1.appendChild(lbl1);fg1.appendChild(sel);fg1.appendChild(custom);
       var fg2=document.createElement("div");fg2.className="fg";
       var lbl2=document.createElement("label");lbl2.textContent="Number";
       var numInput=document.createElement("input");
@@ -681,7 +699,11 @@ function addPR(){
     opt.textContent=t.charAt(0).toUpperCase()+t.slice(1);
     sel.appendChild(opt);
   });
-  fg1.appendChild(l1);fg1.appendChild(sel);
+  var custom=document.createElement("input");
+  custom.type="text";custom.className="pto";custom.placeholder="e.g. Fax";
+  custom.style.display="none";custom.style.marginTop="5px";
+  sel.onchange=function(){ custom.style.display = sel.value==="other" ? "block" : "none"; };
+  fg1.appendChild(l1);fg1.appendChild(sel);fg1.appendChild(custom);
   var fg2=document.createElement("div");fg2.className="fg";
   var l2=document.createElement("label");l2.textContent="Number";
   var i2=document.createElement("input");i2.type="tel";i2.className="pn";i2.placeholder="Number";
@@ -715,30 +737,22 @@ function addIB(){
   h += "<button class=\"btn sm dan\" data-action=\"rmIB\" data-id=\"" + id + "\">Del</button>";
   h += "</div></div>";
 
-  h += "<div class=\"frow\">";
-  h += "<div class=\"fg\"><label>Sub-Master</label><div class=\"irow\">";
-  h += "<select id=\"sm"+id+"\" data-action=\"liN\" data-id=\""+id+"\"><option value=\"\">--</option></select>";
+  // Sub-master - shared across all masters, full width and clearly visible (not squeezed into a 2-column row)
+  h += "<div class=\"fg\" style=\"margin-bottom:6px\"><label>Sub-Master</label><div class=\"irow\">";
+  h += "<select id=\"sm"+id+"\" data-action=\"smChange\" data-id=\""+id+"\" style=\"font-size:14px;font-weight:600\"><option value=\"\">--</option></select>";
   h += "<button class=\"btn sm ghost\" data-action=\"addSM\" data-id=\""+id+"\">+</button>";
   h += "<button class=\"btn sm ghost\" data-action=\"renSM\" data-id=\""+id+"\" title=\"Rename selected\">&#9998;</button>";
   h += "<button class=\"btn sm ghost\" data-action=\"delSM\" data-id=\""+id+"\" title=\"Remove from list\">&#128465;</button></div></div>";
+  h += "<div class=\"fg\" style=\"margin-bottom:8px\"><label>Date</label><input type=\"date\" id=\"dt"+id+"\" value=\""+today+"\"></div>";
+
+  // Diamond only - unchanged: single item-name select, its own fields, and grades
+  h += "<div id=\"itnwrap"+id+"\" style=\"display:none\">";
   h += "<div class=\"fg\"><label>Item name</label><div class=\"irow\">";
   h += "<select id=\"it"+id+"\"><option value=\"\">--</option></select>";
   h += "<button class=\"btn sm ghost\" data-action=\"addIN\" data-id=\""+id+"\">+</button>";
   h += "<button class=\"btn sm ghost\" data-action=\"renIN\" data-id=\""+id+"\" title=\"Rename selected\">&#9998;</button>";
   h += "<button class=\"btn sm ghost\" data-action=\"delIN\" data-id=\""+id+"\" title=\"Remove from list\">&#128465;</button></div></div>";
-  h += "<div class=\"fg\"><label>Date</label><input type=\"date\" id=\"dt"+id+"\" value=\""+today+"\"></div>";
-  h += "</div>";
-
-  h += "<div id=\"gsf"+id+"\"><div class=\"frow\">";
-  h += "<div class=\"fg\"><label>Melting</label><div class=\"irow\">";
-  h += "<input type=\"number\" id=\"mel"+id+"\" placeholder=\"57\" data-action=\"cT\" data-id=\""+id+"\">";
-  h += "<button class=\"vbtn\" id=\"vb"+id+"\" data-action=\"togV\" data-id=\""+id+"\">Verify</button></div></div>";
-  h += "<div class=\"fg\"><label>Wastage</label><input type=\"number\" id=\"wst"+id+"\" placeholder=\"8\" data-action=\"cT\" data-id=\""+id+"\"></div>";
-  h += "<div class=\"fg\"><label>Tunch</label><input type=\"number\" id=\"tun"+id+"\" placeholder=\"auto\"></div>";
-  h += "<div class=\"fg\"><label>Labour</label><input type=\"number\" id=\"lab"+id+"\" placeholder=\"1200\"></div>";
-  h += "</div></div>";
-
-  h += "<div id=\"df"+id+"\" style=\"display:none\"><div class=\"frow\">";
+  h += "<div class=\"frow\">";
   h += "<div class=\"fg\"><label>Melting</label><div class=\"irow\">";
   h += "<input type=\"number\" id=\"dmel"+id+"\" placeholder=\"57\" data-action=\"cDT\" data-id=\""+id+"\">";
   h += "<button class=\"vbtn\" id=\"dvb"+id+"\" data-action=\"togDV\" data-id=\""+id+"\">Verify</button></div></div>";
@@ -749,8 +763,7 @@ function addIB(){
   h += "<div style=\"display:flex;align-items:center;justify-content:space-between;margin:7px 0 4px\">";
   h += "<div class=\"slbl\" style=\"margin:0\">Grades</div>";
   h += "<button class=\"btn xs ghost\" data-action=\"addGr\" data-id=\""+id+"\">+ Grade</button></div>";
-  h += "<div id=\"grd"+id+"\"></div></div>";
-
+  h += "<div id=\"grd"+id+"\"></div>";
   h += "<div style=\"display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:8px\">";
   h += "<div><div class=\"slbl\" style=\"margin-bottom:3px\">Item rating</div>";
   h += "<div class=\"stars\" id=\"is"+id+"\">";
@@ -758,9 +771,7 @@ function addIB(){
     h += "<span class=\"star sm\" data-action=\"setIS\" data-id=\""+id+"\" data-n=\""+n+"\">&#9733;</span>";
   }
   h += "</div></div></div>";
-
   h += "<div class=\"fg\" style=\"margin-top:8px\"><label>Notes</label><input type=\"text\" id=\"ino"+id+"\" placeholder=\"Notes\"></div>";
-
   h += "<div style=\"margin-top:8px\"><div class=\"slbl\" style=\"margin-bottom:4px\">Item images</div>";
   h += "<div style=\"display:flex;gap:6px\">";
   h += "<button type=\"button\" class=\"btn sm pri\" data-action=\"itemCamBtn\" data-id=\""+id+"\" style=\"flex:1;justify-content:center\">&#128247; Camera</button>";
@@ -768,13 +779,14 @@ function addIB(){
   h += "</div>";
   h += "<input type=\"file\" accept=\"image/*\" capture=\"environment\" data-action=\"addIPhsCam\" data-id=\""+id+"\" style=\"display:none\" id=\"itemcam"+id+"\">";
   h += "<div class=\"thumbs\" id=\"iph"+id+"\"></div></div>";
+  h += "</div>";
+
+  // Gold/Silver: fast multi-item quick-entry table, one row per item name under the chosen sub-master
+  h += "<div id=\"qtbl"+id+"\"></div>";
 
   dv.innerHTML = h;
   document.getElementById("ibwrap").appendChild(dv);
-
-  // Wire up all data-action elements (avoids quote-escaping issues entirely)
   wireItemBlockEvents(dv);
-
   liSubs(id,"gold");
 }
 
@@ -787,8 +799,8 @@ function wireItemBlockEvents(container){
       el.onclick=function(){ setIM(id, m, el); };
     } else if(action==="rmIB"){
       el.onclick=function(){ rmIB(id); };
-    } else if(action==="liN"){
-      el.onchange=function(){ liN(id); };
+    } else if(action==="smChange"){
+      el.onchange=function(){ onSMChange(id); };
     } else if(action==="addSM"){
       el.onclick=function(){ addSM(id); };
     } else if(action==="renSM"){
@@ -825,12 +837,125 @@ function wireItemBlockEvents(container){
 }
 
 function rmIB(id){var el=document.getElementById("ib"+id);if(el)el.remove();delete iPhs[id];delete iStars[id];delete iVer[id];if(!document.getElementById("ibwrap").children.length)document.getElementById("ibempty").style.display="block";}
-function setIM(id,m,btn){document.getElementById("ib"+id).className="iblock "+m[0];document.querySelectorAll("#ms"+id+" button").forEach(function(b){b.className="";});btn.className=m==="gold"?"ag":m==="silver"?"as":"ad";document.getElementById("gsf"+id).style.display=m==="diamond"?"none":"block";document.getElementById("df"+id).style.display=m==="diamond"?"block":"none";liSubs(id,m);}
+function setIM(id,m,btn){document.getElementById("ib"+id).className="iblock "+m[0];document.querySelectorAll("#ms"+id+" button").forEach(function(b){b.className="";});btn.className=m==="gold"?"ag":m==="silver"?"as":"ad";document.getElementById("itnwrap"+id).style.display=m==="diamond"?"block":"none";document.getElementById("qtbl"+id).style.display=m==="diamond"?"none":"block";liSubs(id,m);}
 function getIM(id){var s=document.getElementById("ms"+id);var a=s.querySelector(".ag,.as,.ad");return a?a.className==="ag"?"gold":a.className==="as"?"silver":"diamond":"gold";}
-function liSubs(id,m){var s=document.getElementById("sm"+id);var p=s.value;s.innerHTML='<option value="">--</option>';(DB.subs[m]||[]).forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});if(p)s.value=p;liN(id);}
+function liSubs(id,m){var s=document.getElementById("sm"+id);var p=s.value;s.innerHTML='<option value="">--</option>';(DB.subs[m]||[]).forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});if(p)s.value=p;onSMChange(id);}
+
+// Dispatches to the right item-entry UI depending on master: Diamond keeps its
+// single item-name select (grades don't fit a flat row layout); Gold/Silver
+// get the fast multi-row quick-entry table instead.
+function onSMChange(id){
+  var m=getIM(id);
+  var sm=document.getElementById("sm"+id).value;
+  if(m==="diamond"){ liN(id); }
+  else { renderQuickTable(id,m,sm); }
+}
+
+var qImgs={}, qStars={};
+function rk(id,name){ return id+"__"+String(name).replace(/[^a-zA-Z0-9]/g,"_"); }
+
+function renderQuickTable(id,m,sm){
+  var wrap=document.getElementById("qtbl"+id);
+  if(!wrap)return;
+  if(!sm){ wrap.innerHTML='<div style="font-size:12px;color:var(--txt3);padding:6px 2px">Select a sub-master above to see its items</div>'; return; }
+  var k=m+"_"+sm;
+  var names=(DB.items[k]||[]);
+  var h='<div class="slbl" style="margin-bottom:5px">Items under '+esc(sm)+'</div>';
+  if(!names.length){
+    h+='<div style="font-size:12px;color:var(--txt3);margin-bottom:6px">No items yet - add one below</div>';
+  }
+  names.forEach(function(nm){
+    var key=rk(id,nm);
+    h+='<div class="qrow" id="qr_'+key+'">';
+    h+='<div class="qrow-name"><span>'+esc(nm)+'</span>';
+    h+='<button type="button" class="qminibtn" data-qren="'+id+'|'+esc(nm)+'" title="Rename">&#9998;</button>';
+    h+='<button type="button" class="qminibtn" data-qdel="'+id+'|'+esc(nm)+'" title="Delete">&#128465;</button></div>';
+    h+='<div class="qrow-fields">';
+    h+='<input type="text" inputmode="decimal" class="qmel" placeholder="Melting" value="92" data-key="'+key+'" maxlength="4">';
+    h+='<input type="text" inputmode="decimal" class="qwst" placeholder="Wastage" data-key="'+key+'" maxlength="4">';
+    h+='<input type="text" class="qtun" placeholder="Tunch" data-key="'+key+'" readonly>';
+    h+='<input type="text" inputmode="decimal" class="qlab" placeholder="Labour" data-key="'+key+'" maxlength="5">';
+    h+='</div>';
+    h+='<div class="qrow-actions">';
+    h+='<button type="button" class="qicon" data-qcam="'+key+'" title="Camera">&#128247;</button>';
+    h+='<label class="qicon" title="Gallery" style="cursor:pointer"><input type="file" accept="image/*" multiple data-qgal="'+key+'" style="display:none">&#128444;</label>';
+    h+='<input type="file" accept="image/*" capture="environment" data-qcamin="'+key+'" style="display:none">';
+    h+='<span class="qstars" data-qstars="'+key+'">'+[1,2,3,4,5].map(function(n){return '<span class="star" data-n="'+n+'">&#9733;</span>';}).join('')+'</span>';
+    h+='</div>';
+    h+='<div class="qthumbs" id="qth_'+key+'"></div>';
+    h+='</div>';
+  });
+  h+='<button type="button" class="btn xs ghost" data-qadd="'+id+'" style="margin-top:2px">+ Add item name</button>';
+  wrap.innerHTML=h;
+  wireQuickTable(id,wrap);
+}
+
+function wireQuickTable(id,wrap){
+  wrap.querySelectorAll(".qmel,.qwst,.qlab").forEach(function(inp){
+    inp.oninput=function(){
+      this.value=this.value.replace(/[^0-9.]/g,"");
+      var parts=this.value.split(".");
+      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
+      qCalcTunch(this.getAttribute("data-key"));
+    };
+  });
+  wrap.querySelectorAll("[data-qcam]").forEach(function(btn){
+    var key=btn.getAttribute("data-qcam");
+    btn.onclick=function(){ wrap.querySelector("[data-qcamin='"+key+"']").click(); };
+  });
+  wrap.querySelectorAll("[data-qcamin],[data-qgal]").forEach(function(inp){
+    var key=inp.getAttribute("data-qcamin")||inp.getAttribute("data-qgal");
+    inp.onchange=function(e){ addQIPhs(e,key); };
+  });
+  wrap.querySelectorAll("[data-qstars]").forEach(function(sw){
+    var key=sw.getAttribute("data-qstars");
+    sw.querySelectorAll(".star").forEach(function(st,i){
+      st.onclick=function(){
+        qStars[key]=i+1;
+        sw.querySelectorAll(".star").forEach(function(s2,i2){ s2.classList.toggle("lit", i2<=i); });
+      };
+    });
+  });
+  wrap.querySelectorAll("[data-qren]").forEach(function(b){
+    var parts=b.getAttribute("data-qren").split("|");
+    b.onclick=function(){ renIN(parseInt(parts[0]), parts.slice(1).join("|")); };
+  });
+  wrap.querySelectorAll("[data-qdel]").forEach(function(b){
+    var parts=b.getAttribute("data-qdel").split("|");
+    b.onclick=function(){ delIN(parseInt(parts[0]), parts.slice(1).join("|")); };
+  });
+  var addBtn=wrap.querySelector("[data-qadd]");
+  if(addBtn) addBtn.onclick=function(){ addIN(id); };
+}
+
+function qCalcTunch(key){
+  var row=document.getElementById("qr_"+key);
+  if(!row)return;
+  var mel=parseFloat(row.querySelector(".qmel").value)||0;
+  var wstEl=row.querySelector(".qwst");
+  var wst=wstEl.value.trim();
+  var tunEl=row.querySelector(".qtun");
+  if(wst===""){ tunEl.value=""; return; }
+  tunEl.value=(mel+(parseFloat(wst)||0)).toFixed(2);
+}
+
+function addQIPhs(e,key){
+  if(!qImgs[key])qImgs[key]=[];
+  Array.from(e.target.files).forEach(function(f){
+    var r=new FileReader();
+    r.onload=function(ev){
+      compressImage(ev.target.result,1280,0.75).then(function(src){
+        qImgs[key].push({src:src,stars:0});
+        var th=document.getElementById("qth_"+key);
+        if(th){ var img=document.createElement("img"); img.src=src; th.appendChild(img); }
+      });
+    };
+    r.readAsDataURL(f);
+  });
+}
 function liN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;var s=document.getElementById("it"+id);var p=s.value;s.innerHTML='<option value="">--</option>';var k=m+"_"+sm;(DB.items[k]||[]).forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});if(p)s.value=p;}
-function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());saveDr();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();liN(id);toast("Sub-master added","ok");}
-function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());saveDr();}liN(id);document.getElementById("it"+id).value=n.trim();toast("Item added","ok");}
+function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());saveDr();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();onSMChange(id);toast("Sub-master added","ok");}
+function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());saveDr();}if(m==="diamond"){liN(id);document.getElementById("it"+id).value=n.trim();}else{renderQuickTable(id,m,sm);}toast("Item added","ok");}
 
 // Rename/delete for the sub-master and item-name picklists. Renaming also
 // updates every already-saved entry that used the old name, so Browse,
@@ -859,7 +984,7 @@ function renSM(id){
   if(changed) dbVersion++;
   liSubs(id,m);
   document.getElementById("sm"+id).value=n;
-  liN(id);
+  onSMChange(id);
   toast("Renamed sub-master"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
   saveDr();
 }
@@ -883,12 +1008,13 @@ function delSM(id){
   saveDr();
 }
 
-function renIN(id){
+function renIN(id, forcedOld){
   var m=getIM(id);
   var sm=document.getElementById("sm"+id).value;
   if(!sm){toast("Select a sub-master first","err");return;}
-  var sel=document.getElementById("it"+id);
-  var old=sel.value;
+  var old;
+  if(forcedOld!==undefined){ old=forcedOld; }
+  else { var sel=document.getElementById("it"+id); old=sel?sel.value:""; }
   if(!old){toast("Select an item name first","err");return;}
   var n=prompt("Rename item \""+old+"\" to:",old);
   if(!n||!n.trim()||n.trim()===old)return;
@@ -903,18 +1029,19 @@ function renIN(id){
     (e.items||[]).forEach(function(it){ if(it.master===m && it.submaster===sm && it.itemName===old){ it.itemName=n; changed++; } });
   });
   if(changed) dbVersion++;
-  liN(id);
-  document.getElementById("it"+id).value=n;
+  if(m==="diamond"){ liN(id); document.getElementById("it"+id).value=n; }
+  else { renderQuickTable(id,m,sm); }
   toast("Renamed item"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
   saveDr();
 }
 
-function delIN(id){
+function delIN(id, forcedOld){
   var m=getIM(id);
   var sm=document.getElementById("sm"+id).value;
   if(!sm){toast("Select a sub-master first","err");return;}
-  var sel=document.getElementById("it"+id);
-  var old=sel.value;
+  var old;
+  if(forcedOld!==undefined){ old=forcedOld; }
+  else { var sel=document.getElementById("it"+id); old=sel?sel.value:""; }
   if(!old){toast("Select an item name first","err");return;}
   var k=m+"_"+sm;
   var usedCount=0;
@@ -925,7 +1052,7 @@ function delIN(id){
   }
   if(!confirm("Remove item name \""+old+"\" from the list?"))return;
   DB.items[k]=(DB.items[k]||[]).filter(function(v){return v!==old;});
-  liN(id);
+  if(m==="diamond"){ liN(id); } else { renderQuickTable(id,m,sm); }
   toast("Item name removed from list","ok");
   saveDr();
 }
@@ -971,7 +1098,7 @@ function addGr(iid){
 
 function addGPhs(e,iid,gi){var gk=iid+"_"+gi;if(!gPhs[gk])gPhs[gk]=[];Array.from(e.target.files).forEach(function(f){var r=new FileReader();r.onload=function(ev){compressImage(ev.target.result,1280,0.75).then(function(src){gPhs[gk].push({src:src,stars:0});var img=document.createElement("img");img.src=src;img.className="thumb";document.getElementById("gph"+iid+"-"+gi).appendChild(img);});};r.readAsDataURL(f);});}
 
-function colSup(){var cs=[],ps=[];document.querySelectorAll("#cwrap .cr").forEach(function(r){var n=r.querySelector(".cn").value.trim();var ro=r.querySelector(".cro").value.trim();if(n)cs.push({name:n,role:ro});});document.querySelectorAll("#pwrap .pr").forEach(function(r){var n=r.querySelector(".pn").value.trim();var t=r.querySelector(".pt").value;if(n)ps.push({type:t,number:n});});return{firm:document.getElementById("sfirm").value.trim(),contacts:cs,phones:ps,address:document.getElementById("saddr").value.trim(),notes:document.getElementById("snotes").value.trim(),stars:supSV,photos:[].concat(shopPhs),cardImages:[sides.front&&sides.front.src,sides.back&&sides.back.src].filter(Boolean)};}
+function colSup(){var cs=[],ps=[];document.querySelectorAll("#cwrap .cr").forEach(function(r){var n=r.querySelector(".cn").value.trim();var ro=r.querySelector(".cro").value.trim();if(n)cs.push({name:n,role:ro});});document.querySelectorAll("#pwrap .pr").forEach(function(r){var n=r.querySelector(".pn").value.trim();var t=r.querySelector(".pt").value;var custom=r.querySelector(".pto");if(t==="other"&&custom&&custom.value.trim())t=custom.value.trim();if(n)ps.push({type:t,number:n});});return{firm:document.getElementById("sfirm").value.trim(),contacts:cs,phones:ps,address:document.getElementById("saddr").value.trim(),notes:document.getElementById("snotes").value.trim(),stars:supSV,photos:[].concat(shopPhs),cardImages:[sides.front&&sides.front.src,sides.back&&sides.back.src].filter(Boolean)};}
 
 // ===== Android Contacts integration =====
 // Import: uses Chrome's Contact Picker API (Android Chrome only - no write
@@ -1044,7 +1171,60 @@ function exportToContacts(){
   setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
   toast("Contact file downloaded - open it to add to your phone","ok");
 }
-function colItems(){var items=[];document.querySelectorAll("[id^='ib']").forEach(function(bl){var id=parseInt(bl.id.replace("ib",""));if(isNaN(id))return;var m=getIM(id);var isD=m==="diamond";var it={master:m,submaster:document.getElementById("sm"+id).value,itemName:document.getElementById("it"+id).value,date:document.getElementById("dt"+id).value,notes:document.getElementById("ino"+id).value,stars:iStars[id]||0,images:[].concat(iPhs[id]||[])};if(!isD){it.melting=document.getElementById("mel"+id).value;it.wastage=document.getElementById("wst"+id).value;it.tunch=document.getElementById("tun"+id).value;it.labour=document.getElementById("lab"+id).value;it.meltingVerified=iVer[id]||false;}else{it.melting=document.getElementById("dmel"+id).value;it.wastage=document.getElementById("dwst"+id).value;it.tunch=document.getElementById("dtun"+id).value;it.labour=document.getElementById("dlab"+id).value;it.meltingVerified=iVer["d"+id]||false;var grades=[];document.querySelectorAll("#grd"+id+" .gblock").forEach(function(gb,gi){var gk=id+"_"+(gi+1);grades.push({colour:gb.querySelector(".gcol").value,clarity:gb.querySelector(".gclar").value,weight:gb.querySelector(".gwt").value,price:gb.querySelector(".gprc").value,date:gb.querySelector(".gdt").value,notes:gb.querySelector(".gnot").value,images:[].concat(gPhs[gk]||[])});});it.grades=grades;}items.push(it);});return items;}
+function colItems(){
+  var items=[];
+  document.querySelectorAll("[id^='ib']").forEach(function(bl){
+    var id=parseInt(bl.id.replace("ib",""));
+    if(isNaN(id))return;
+    var m=getIM(id);
+    var isD=m==="diamond";
+    var sm=document.getElementById("sm"+id).value;
+    var date=document.getElementById("dt"+id).value;
+    if(isD){
+      var it={master:m,submaster:sm,itemName:document.getElementById("it"+id).value,date:date,notes:document.getElementById("ino"+id).value,stars:iStars[id]||0,images:[].concat(iPhs[id]||[])};
+      it.melting=document.getElementById("dmel"+id).value;
+      it.wastage=document.getElementById("dwst"+id).value;
+      it.tunch=document.getElementById("dtun"+id).value;
+      it.labour=document.getElementById("dlab"+id).value;
+      it.meltingVerified=iVer["d"+id]||false;
+      var grades=[];
+      document.querySelectorAll("#grd"+id+" .gblock").forEach(function(gb,gi){
+        var gk=id+"_"+(gi+1);
+        grades.push({colour:gb.querySelector(".gcol").value,clarity:gb.querySelector(".gclar").value,weight:gb.querySelector(".gwt").value,price:gb.querySelector(".gprc").value,date:gb.querySelector(".gdt").value,notes:gb.querySelector(".gnot").value,images:[].concat(gPhs[gk]||[])});
+      });
+      it.grades=grades;
+      items.push(it);
+    } else {
+      // Quick-entry table: only rows where wastage or labour was actually
+      // typed in get saved - untouched rows (item exists in the picklist
+      // but wasn't priced today) are skipped entirely.
+      var qwrap=document.getElementById("qtbl"+id);
+      if(!qwrap)return;
+      qwrap.querySelectorAll(".qrow").forEach(function(row){
+        var wst=row.querySelector(".qwst").value.trim();
+        var lab=row.querySelector(".qlab").value.trim();
+        if(!wst && !lab) return;
+        var key=row.querySelector(".qmel").getAttribute("data-key");
+        var nm=row.querySelector(".qrow-name span").textContent;
+        items.push({
+          master:m,
+          submaster:sm,
+          itemName:nm,
+          date:date,
+          notes:"",
+          stars:qStars[key]||0,
+          images:[].concat(qImgs[key]||[]),
+          melting:row.querySelector(".qmel").value.trim(),
+          wastage:wst,
+          tunch:row.querySelector(".qtun").value.trim(),
+          labour:lab,
+          meltingVerified:false
+        });
+      });
+    }
+  });
+  return items;
+}
 
 async function saveAll(){
   if(window._savingEntry) return; // ignore double-taps while a save is already in flight
@@ -1061,7 +1241,7 @@ async function saveAll(){
 }
 function clearAll(){
   supSV=0;shopPhs=[];sides={front:null,back:null};
-  ic=0;crC=0;prC=0;iPhs={};iStars={};iVer={};gCnt={};gPhs={};
+  ic=0;crC=0;prC=0;iPhs={};iStars={};iVer={};gCnt={};gPhs={};qImgs={};qStars={};
   ["sfirm","saddr","snotes"].forEach(function(id){var el=document.getElementById(id);if(el)el.value="";});
   document.querySelectorAll("#supstars .star").forEach(function(s){s.classList.remove("lit");});
   document.getElementById("sslbl").textContent="Tap to rate";
