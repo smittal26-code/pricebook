@@ -209,11 +209,12 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .lbstars{position:absolute;bottom:115px;left:50%;transform:translateX(-50%);display:flex;gap:3px;align-items:center;background:rgba(0,0,0,.6);padding:7px 15px;border-radius:20px;z-index:5}
 .lbstars .star{font-size:24px}
 .lbstars .slbl3{color:rgba(255,255,255,.55);font-size:10px;margin-left:5px;white-space:nowrap}
-.infopanel{display:none;position:absolute;inset:0;background:rgba(0,0,0,.92);z-index:12;padding:18px;overflow-y:auto;flex-direction:column}
+.infopanel{display:none;position:absolute;inset:0;background:var(--sur);z-index:12;padding:18px;overflow-y:auto;flex-direction:column}
 .infopanel.open{display:flex}
-.inforow{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1)}
-.infolbl{font-size:10px;color:rgba(255,255,255,.45);font-weight:600;min-width:80px;padding-top:2px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
-.infoval{font-size:13px;color:#fff;flex:1}
+.infopanel .lbclose{color:var(--txt);background:var(--sur2)}
+.inforow{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--bdr)}
+.infolbl{font-size:10px;color:var(--txt3);font-weight:600;min-width:80px;padding-top:2px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.infoval{font-size:13px;color:var(--txt);flex:1}
 .lbthumbstrip{display:flex;gap:4px;overflow-x:auto;padding:6px 12px;background:rgba(0,0,0,.8);scrollbar-width:none;flex-shrink:0}
 .lbthumbstrip::-webkit-scrollbar{display:none}
 .lbthumb{width:42px;height:42px;border-radius:4px;object-fit:cover;cursor:pointer;border:2px solid transparent;flex-shrink:0;opacity:.6;transition:all .15s}
@@ -455,7 +456,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   </div>
   <div class="infopanel" id="infopanel">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="color:#fff;font-size:14px;font-weight:600">&#128203; Image Details</div>
+      <div style="color:var(--txt);font-size:14px;font-weight:600">&#128203; Image Details</div>
       <button class="lbclose" onclick="toggleInfo()">X</button>
     </div>
     <div id="inforows"></div>
@@ -1721,7 +1722,7 @@ function toggleInfo(){
   // Editing only makes sense for real saved catalogue items (they carry entryId/itemIdx) -
   // card scans, shop photos etc. use lighter meta objects without these, so no Edit button there.
   if(meta.entryId!==undefined && meta.itemIdx!==undefined){
-    editWrap.innerHTML='<button type="button" class="btn sm ghost" style="width:100%;justify-content:center;color:#fff;border-color:#555" onclick="startInfoEdit()">&#9998; Edit melting / wastage / labour</button>';
+    editWrap.innerHTML='<button type="button" class="btn sm ghost" style="width:100%;justify-content:center" onclick="startInfoEdit()">&#9998; Edit melting / wastage / labour</button>';
   } else {
     editWrap.innerHTML="";
   }
@@ -1732,12 +1733,12 @@ function startInfoEdit(){
   var meta=lbMeta[lbIdx]||{};
   var editWrap=document.getElementById("infoeditwrap");
   editWrap.innerHTML=
-    '<div class="fg" style="margin-bottom:6px"><label style="color:#ccc">Melting</label><input type="text" inputmode="decimal" id="ieMel" value="'+esc(meta.melting||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid #555;background:#222;color:#fff"></div>'+
-    '<div class="fg" style="margin-bottom:6px"><label style="color:#ccc">Wastage</label><input type="text" inputmode="decimal" id="ieWst" value="'+esc(meta.wastage||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid #555;background:#222;color:#fff"></div>'+
-    '<div class="fg" style="margin-bottom:6px"><label style="color:#ccc">Tunch (auto)</label><input type="text" id="ieTun" value="'+esc(meta.tunch||"")+'" readonly style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#1a1a1a;color:#999"></div>'+
-    '<div class="fg" style="margin-bottom:10px"><label style="color:#ccc">Labour</label><input type="text" inputmode="decimal" id="ieLab" value="'+esc(meta.labour||"")+'" maxlength="5" style="width:100%;padding:8px;border-radius:6px;border:1px solid #555;background:#222;color:#fff"></div>'+
+    '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Melting</label><input type="text" inputmode="decimal" id="ieMel" value="'+esc(meta.melting||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
+    '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Wastage</label><input type="text" inputmode="decimal" id="ieWst" value="'+esc(meta.wastage||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
+    '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Tunch (auto)</label><input type="text" id="ieTun" value="'+esc(meta.tunch||"")+'" readonly style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--txt3)"></div>'+
+    '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Labour</label><input type="text" inputmode="decimal" id="ieLab" value="'+esc(meta.labour||"")+'" maxlength="5" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
     '<div style="display:flex;gap:8px">'+
-    '<button type="button" class="btn sm ghost" style="flex:1;justify-content:center;color:#fff;border-color:#555" onclick="toggleInfo();toggleInfo();">Cancel</button>'+
+    '<button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="toggleInfo();toggleInfo();">Cancel</button>'+
     '<button type="button" class="btn sm pri" style="flex:1;justify-content:center" onclick="saveInfoEdit()">Save</button>'+
     '</div>';
   var recalc=function(){
