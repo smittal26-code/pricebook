@@ -499,7 +499,38 @@ var lbImgs=[],lbMeta=[],lbIdx=0;
 var Z={scale:1,minS:1,maxS:5,ox:0,oy:0},PinchSt={on:false,d0:0,s0:1},DragSt={on:false,sx:0,sy:0,ox0:0,oy0:0};
 var lastTap=0,zHintT,zLvlT,swX=0,curLnk="";
 
-function goP(p,btn){document.querySelectorAll(".pg").forEach(function(x){x.classList.remove("active");});document.querySelectorAll(".nb").forEach(function(x){x.classList.remove("active");});document.getElementById("pg-"+p).classList.add("active");if(btn)btn.classList.add("active");if(p==="browse")renderBr();if(p==="cat")renderCat();if(p==="sup")renderSup();if(p==="compare"){lcSub();lcIt();}}
+var _navigatingViaPopstate=false;
+function goP(p,btn){document.querySelectorAll(".pg").forEach(function(x){x.classList.remove("active");});document.querySelectorAll(".nb").forEach(function(x){x.classList.remove("active");});document.getElementById("pg-"+p).classList.add("active");if(btn)btn.classList.add("active");if(p==="browse")renderBr();if(p==="cat")renderCat();if(p==="sup")renderSup();if(p==="compare"){lcSub();lcIt();}if(!_navigatingViaPopstate){history.pushState({pbTab:p},"",location.href);}}
+
+function currentTabName(){var b=document.querySelector(".pg.active");return b?b.id.replace("pg-",""):"add";}
+
+// The app was letting Android's back button fall through to real browser
+// history (old Google sign-in redirect entries, then exiting the app once
+// that ran out) because nothing here ever used the History API. This makes
+// each tab switch and each open overlay its own history entry, so back
+// closes the topmost overlay first, then steps between the app's own tabs,
+// and only exits the app once you're back at the tab you started on.
+function initBackHandling(){
+  history.replaceState({pbTab:currentTabName()},"",location.href);
+  window.addEventListener("popstate",function(e){
+    var lb=document.getElementById("lb");
+    if(lb && lb.classList.contains("open")){
+      closeLB();
+      history.pushState({pbTab:currentTabName()},"",location.href);
+      return;
+    }
+    var camModal=document.getElementById("camModal");
+    if(camModal && camModal.style.display==="flex"){
+      closeCameraCapture();
+      history.pushState({pbTab:currentTabName()},"",location.href);
+      return;
+    }
+    var tab=(e.state && e.state.pbTab) || "add";
+    _navigatingViaPopstate=true;
+    goP(tab, document.getElementById("nb-"+tab));
+    _navigatingViaPopstate=false;
+  });
+}
 function togCol(bid,tid){
   try {
     var b=document.getElementById(bid);
@@ -2437,6 +2468,7 @@ window.addEventListener('offline', updateOnlineStatus);
 window.addEventListener('online', function() { toast('Back online', 'ok'); });
 
 // === INIT ===
+initBackHandling();
 initDrive();
 </script>
 </body>
