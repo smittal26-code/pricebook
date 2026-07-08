@@ -283,6 +283,40 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     </div>
   </div>
 </div>
+<!-- Shared media modal - filled in when the app is opened via the OS share sheet (Web Share Target) -->
+<div class="mbg" id="share-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="mhead"><h3>&#128247; Attach shared media</h3><button class="btn xs dan" onclick="closeShareScreen()">X</button></div>
+    <div class="mbody">
+      <div class="slbl" style="margin-top:0">Shared with Price Book</div>
+      <div class="thumbs" id="shThumbs" style="margin-bottom:11px"></div>
+      <div class="div"></div>
+      <div class="slbl">Master</div>
+      <div class="mseg" id="shMseg" style="margin-bottom:11px">
+        <button type="button" class="ag" onclick="setShareMaster('gold',this)">Gold</button>
+        <button type="button" onclick="setShareMaster('silver',this)">Silver</button>
+        <button type="button" onclick="setShareMaster('diamond',this)">Diamond</button>
+      </div>
+      <div class="fg" style="margin-bottom:8px"><label>Sub-Master</label><div class="irow">
+        <select id="shsm" onchange="onShareSMChange()"><option value="">--</option></select>
+        <button type="button" class="btn sm ghost" onclick="addShareSM()">+</button>
+      </div></div>
+      <div class="fg" style="margin-bottom:8px"><label>Item</label><div class="irow">
+        <select id="shit"><option value="">--</option></select>
+        <button type="button" class="btn sm ghost" onclick="addShareItem()">+</button>
+      </div></div>
+      <div class="fg" style="margin-bottom:8px"><label>Supplier</label>
+        <input type="text" id="shsup" list="shSupList" placeholder="Search or type a new supplier name">
+        <datalist id="shSupList"></datalist>
+      </div>
+      <div style="display:flex;gap:7px;justify-content:flex-end;margin-top:9px">
+        <button class="btn" onclick="closeShareScreen()">Cancel</button>
+        <button class="btn pri" id="shSaveBtn" onclick="saveShareMedia()">&#128190; Attach & Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="content">
 
 <div class="pg active" id="pg-add">
@@ -2239,6 +2273,7 @@ async function loadFromDrive(){
     }
     setDP("ok","OK","Drive synced");
     renderSup();
+    if(document.getElementById("share-modal").classList.contains("open")) renderShareSupplierList();
   } catch(e){
     setDP("err","!","Load error");
     toast("Load error: "+e.message,"err");
@@ -2384,12 +2419,242 @@ if (isIOS && !isInStandaloneMode) {
   }, 500);
 }
 
+// ===== Web Share Target: "attach shared media" screen =====
+// When Android shares photos/videos to this app (via manifest.json's
+// share_target), sw.js intercepts the POST, stashes the raw files in the
+// "pbshare" IndexedDB database, and redirects here with ?share=1. On load we
+// pick those files up, let the user choose Master/Sub-Master/Item and a
+// supplier (existing or new), and save the media onto that catalogue entry
+// exactly like any other item photo/video.
+var SHARE_DB_NAME = "pbshare", SHARE_STORE_NAME = "shares";
+var shareMaster = "gold";
+var shareRecords = []; // [{id, blob, name, type}]
+var shareThumbUrls = [];
+
+function shareDbOpen(){
+  return new Promise(function(resolve,reject){
+    try{
+      var req = indexedDB.open(SHARE_DB_NAME, 1);
+      req.onupgradeneeded = function(){
+        if(!req.result.objectStoreNames.contains(SHARE_STORE_NAME)){
+          req.result.createObjectStore(SHARE_STORE_NAME, {keyPath:"id"});
+        }
+      };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ reject(req.error); };
+    }catch(e){ reject(e); }
+  });
+}
+function shareDbGetAll(){
+  return shareDbOpen().then(function(db){
+    return new Promise(function(resolve){
+      try{
+        var tx = db.transaction(SHARE_STORE_NAME, "readonly");
+        var req = tx.objectStore(SHARE_STORE_NAME).getAll();
+        req.onsuccess = function(){ resolve(req.result || []); };
+        req.onerror = function(){ resolve([]); };
+      }catch(e){ resolve([]); }
+    });
+  });
+}
+function shareDbClear(){
+  return shareDbOpen().then(function(db){
+    return new Promise(function(resolve){
+      try{
+        var tx = db.transaction(SHARE_STORE_NAME, "readwrite");
+        tx.objectStore(SHARE_STORE_NAME).clear();
+        tx.oncomplete = function(){ resolve(); };
+        tx.onerror = function(){ resolve(); };
+      }catch(e){ resolve(); }
+    });
+  });
+}
+
+async function maybeOpenShareScreen(){
+  var params = new URLSearchParams(location.search);
+  if(params.get("share") !== "1") return;
+  // Clean the ?share=1 out of the URL right away so a refresh doesn't re-open this.
+  var clean = location.pathname;
+  history.replaceState({}, "", clean);
+  var records = await shareDbGetAll();
+  if(!records.length){
+    toast("No shared media found - try sharing again","info");
+    return;
+  }
+  shareRecords = records;
+  openShareScreen();
+}
+
+function openShareScreen(){
+  shareThumbUrls.forEach(function(u){ try{ URL.revokeObjectURL(u); }catch(e){} });
+  shareThumbUrls = [];
+  var wrap = document.getElementById("shThumbs");
+  wrap.innerHTML = "";
+  shareRecords.forEach(function(rec){
+    var url = URL.createObjectURL(rec.blob);
+    shareThumbUrls.push(url);
+    var isVideo = (rec.type||"").indexOf("video") === 0;
+    if(isVideo){
+      var v = document.createElement("video");
+      v.src = url; v.className = "thumb"; v.muted = true; v.playsInline = true;
+      wrap.appendChild(v);
+    } else {
+      var img = document.createElement("img");
+      img.src = url; img.className = "thumb";
+      wrap.appendChild(img);
+    }
+  });
+  document.getElementById("shsup").value = "";
+  renderShareSupplierList();
+  setShareMaster("gold", document.querySelector("#shMseg button"));
+  document.getElementById("share-modal").classList.add("open");
+}
+
+function closeShareScreen(){
+  document.getElementById("share-modal").classList.remove("open");
+  shareThumbUrls.forEach(function(u){ try{ URL.revokeObjectURL(u); }catch(e){} });
+  shareThumbUrls = [];
+  shareRecords = [];
+  shareDbClear();
+}
+
+function setShareMaster(m, btn){
+  shareMaster = m;
+  document.querySelectorAll("#shMseg button").forEach(function(b){ b.className=""; });
+  if(btn) btn.className = m==="gold"?"ag":m==="silver"?"as":"ad";
+  liShareSubs(m);
+}
+
+function liShareSubs(m){
+  var s = document.getElementById("shsm");
+  s.innerHTML = '<option value="">--</option>';
+  (DB.subs[m]||[]).forEach(function(v){ s.innerHTML += '<option value="'+esc(v)+'">'+esc(v)+"</option>"; });
+  onShareSMChange();
+}
+
+function onShareSMChange(){
+  var sm = document.getElementById("shsm").value;
+  var it = document.getElementById("shit");
+  it.innerHTML = '<option value="">--</option>';
+  if(!sm) return;
+  var k = shareMaster+"_"+sm;
+  (DB.items[k]||[]).forEach(function(nm){ it.innerHTML += '<option value="'+esc(nm)+'">'+esc(nm)+"</option>"; });
+}
+
+function addShareSM(){
+  var n = prompt("New sub-master (e.g. Chutki):");
+  if(!n || !n.trim()) return;
+  n = n.trim();
+  if(!DB.subs[shareMaster]) DB.subs[shareMaster] = [];
+  if(DB.subs[shareMaster].indexOf(n) < 0){ DB.subs[shareMaster].push(n); queueSync(); }
+  liShareSubs(shareMaster);
+  document.getElementById("shsm").value = n;
+  onShareSMChange();
+}
+
+function addShareItem(){
+  var sm = document.getElementById("shsm").value;
+  if(!sm){ toast("Pick a Sub-Master first","err"); return; }
+  var n = prompt("New item name:");
+  if(!n || !n.trim()) return;
+  n = n.trim();
+  var k = shareMaster+"_"+sm;
+  if(!DB.items[k]) DB.items[k] = [];
+  if(DB.items[k].indexOf(n) < 0){ DB.items[k].push(n); queueSync(); }
+  onShareSMChange();
+  document.getElementById("shit").value = n;
+}
+
+function renderShareSupplierList(){
+  var dl = document.getElementById("shSupList");
+  if(!dl) return;
+  var names = {};
+  (DB.entries||[]).forEach(function(e){
+    var sup = e.supplier||{};
+    var n = sup.firm || ((sup.contacts||[])[0]||{}).name;
+    if(n) names[n] = true;
+  });
+  dl.innerHTML = Object.keys(names).map(function(n){ return '<option value="'+esc(n)+'">'; }).join("");
+}
+
+// Converts a shared Blob into the same {src,stars,type} shape used
+// everywhere else in the app for item images/videos - photos get run
+// through the usual compression pass, videos are kept as-is.
+function shareBlobToImage(rec){
+  return new Promise(function(resolve){
+    var isVideo = (rec.type||"").indexOf("video") === 0;
+    var r = new FileReader();
+    r.onload = function(ev){
+      if(isVideo){
+        resolve({src:ev.target.result, stars:0, type:"video"});
+      } else {
+        compressImage(ev.target.result, 1280, 0.75).then(function(src){
+          resolve({src:src, stars:0, type:"image"});
+        });
+      }
+    };
+    r.onerror = function(){ resolve(null); };
+    r.readAsDataURL(rec.blob);
+  });
+}
+
+async function saveShareMedia(){
+  var sm = document.getElementById("shsm").value;
+  var itN = document.getElementById("shit").value;
+  var supName = document.getElementById("shsup").value.trim();
+  if(!sm){ toast("Pick a Sub-Master","err"); return; }
+  if(!itN){ toast("Pick an Item","err"); return; }
+  if(!supName){ toast("Enter a supplier name","err"); return; }
+  var btn = document.getElementById("shSaveBtn");
+  btn.disabled = true; btn.style.opacity = "0.6";
+  try{
+    var images = [];
+    for(var i=0;i<shareRecords.length;i++){
+      var im = await shareBlobToImage(shareRecords[i]);
+      if(im) images.push(im);
+    }
+    if(!images.length){ toast("Couldn't read the shared media","err"); return; }
+
+    var entry = (DB.entries||[]).find(function(e){
+      var sup = e.supplier||{};
+      var n = sup.firm || ((sup.contacts||[])[0]||{}).name || "";
+      return n.trim().toLowerCase() === supName.toLowerCase();
+    });
+    if(!entry){
+      entry = {id:String(Date.now()), supplier:{firm:supName, contacts:[], phones:[], address:"", notes:"", stars:0, photos:[], cardImages:[]}, items:[], savedAt:new Date().toISOString()};
+      DB.entries.push(entry);
+    }
+    var item = (entry.items||[]).find(function(it){
+      return it.master===shareMaster && it.submaster===sm && it.itemName===itN;
+    });
+    if(!item){
+      var today = new Date().toISOString().split("T")[0];
+      item = {master:shareMaster, submaster:sm, itemName:itN, date:today, notes:"", stars:0, images:[], melting:"", wastage:"", tunch:"", labour:"", meltingVerified:false};
+      entry.items.push(item);
+    }
+    if(!item.images) item.images = [];
+    item.images = item.images.concat(images);
+
+    dbVersion++;
+    queueSync();
+    toast("Attached "+images.length+" file(s) of media to "+supName,"ok");
+    closeShareScreen();
+    goP("cat", document.getElementById("nb-cat"));
+  } finally {
+    btn.disabled = false; btn.style.opacity = "1";
+  }
+}
+
+window.addEventListener("DOMContentLoaded", function(){
+  setTimeout(maybeOpenShareScreen, 400);
+});
+
 // Register the service worker once. (Previously this unregistered every SW and
 // wiped ALL caches on every single app launch, which defeated offline/fast-load
 // caching entirely and added a needless 2s delay before re-registering.)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/pricebook/sw.js?v=3')
-    .then(function(reg){ console.log('SW v3 registered'); })
+  navigator.serviceWorker.register('/pricebook/sw.js?v=4')
+    .then(function(reg){ console.log('SW v4 registered'); })
     .catch(function(err){ console.log('SW skip:', err); });
 }
 
