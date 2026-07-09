@@ -503,14 +503,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <button class="nb" onclick="goP('sup',this)" id="nb-sup"><span class="ni">&#127978;</span><span>Suppliers</span></button>
 </div>
 
-<div id="camModal" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column">
-  <video id="camVideo" autoplay playsinline muted style="flex:1;width:100%;object-fit:cover;background:#000"></video>
-  <div id="camThumbs" style="display:flex;gap:6px;padding:8px;overflow-x:auto;background:#111;min-height:44px"></div>
-  <div style="display:flex;gap:8px;padding:10px;background:#111;justify-content:center;align-items:center;flex-wrap:wrap">
+<div id="camModal" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column;overflow:hidden">
+  <video id="camVideo" autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:cover;background:#000"></video>
+  <div id="camThumbs" style="display:flex;gap:6px;padding:8px;overflow-x:auto;background:#111;min-height:44px;flex-shrink:0"></div>
+  <div style="display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));background:#111;justify-content:center;align-items:center;flex-wrap:wrap;flex-shrink:0">
     <button id="camCancelBtn" type="button" style="background:none;border:none;color:#fff;font-size:14px;padding:8px 10px">Cancel</button>
-    <button id="camShotBtn" type="button" style="width:62px;height:62px;border-radius:50%;background:#fff;border:4px solid #888"></button>
+    <button id="camShotBtn" type="button" style="width:62px;height:62px;border-radius:50%;background:#fff;border:4px solid #888;flex-shrink:0"></button>
     <button id="camVidBtn" type="button" style="background:#333;border:1px solid #666;color:#fff;font-size:12px;padding:8px 10px;border-radius:8px;white-space:nowrap">&#127909; Video</button>
-    <button id="camDoneBtn" type="button" style="background:var(--brand);border:none;color:#fff;font-size:14px;padding:8px 14px;border-radius:8px;font-weight:600">Done (<span id="camCount">0</span>)</button>
+    <button id="camDoneBtn" type="button" style="background:var(--brand);border:none;color:#fff;font-size:14px;padding:8px 14px;border-radius:8px;font-weight:600;white-space:nowrap">Done (<span id="camCount">0</span>)</button>
   </div>
 </div>
 <div class="lb" id="lb">
