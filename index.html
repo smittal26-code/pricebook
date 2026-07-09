@@ -190,6 +190,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .sitem .scap{padding:4px 6px;font-size:10px;color:var(--txt3)}
 .sitem .wabtn{position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.92);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px}
 .sitem .imgstars{position:absolute;top:4px;left:4px;display:flex;gap:1px;background:rgba(0,0,0,0.4);padding:2px 5px;border-radius:10px}
+.selchk{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,0.35);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 1px rgba(0,0,0,0.25)}
+.selchk.on{background:var(--brand);border-color:var(--brand)}
 .lb{display:none;position:fixed;inset:0;background:#000;z-index:300;flex-direction:column;overflow:hidden;touch-action:none}
 .lb.open{display:flex}
 .lbtop{position:absolute;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;align-items:flex-start;padding:12px 14px;background:linear-gradient(rgba(0,0,0,.65),transparent)}
@@ -305,6 +307,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
         <select id="shit"><option value="">--</option></select>
         <button type="button" class="btn sm ghost" onclick="addShareItem()">+</button>
       </div></div>
+      <div class="fg" style="margin-bottom:6px"><label>Collection Name <span style="color:#e11">*</span></label><div class="irow">
+        <select id="shcol" onchange="onShareColAllChange()"><option value="">--</option></select>
+        <button type="button" class="btn sm ghost" onclick="addShareCollection()">+</button>
+      </div></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--txt2);margin-bottom:10px">
+        <input type="checkbox" id="shColAll" checked onchange="onShareColAllChange()"> Apply this collection to all shared media above
+      </label>
+      <div id="shPerImgCols" style="display:none;margin-bottom:10px"></div>
       <div class="fg" style="margin-bottom:8px"><label>Supplier</label>
         <input type="text" id="shsup" list="shSupList" placeholder="Search or type a new supplier name">
         <datalist id="shSupList"></datalist>
@@ -439,6 +449,20 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       <span class="fpill" onclick="setCatSort('stars_asc',this)">Stars Asc</span>
       <span class="fpill" onclick="setCatSort('stars_desc',this)">Stars Desc</span>
     </div>
+    <div class="filterrow" id="catColRow" style="align-items:center">
+      <span style="font-size:11px;color:var(--txt3);font-weight:500">Collection:</span>
+      <select id="catColSel" onchange="setCatCollection(this.value)" style="font-size:12px;padding:4px 7px;border-radius:7px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)">
+        <option value="">All collections</option>
+      </select>
+      <span class="fpill" id="catSelBtn" onclick="toggleCatSelectMode()" style="margin-left:auto">&#9744; Select</span>
+    </div>
+    <div id="catSelBar" style="display:none;align-items:center;justify-content:space-between;background:var(--brand-l);border:1px solid var(--brand);border-radius:8px;padding:8px 10px;margin-bottom:9px;font-size:12px">
+      <span id="catSelCount">0 selected</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn xs" onclick="clearCatSelection()">Clear</button>
+        <button class="btn wa xs" onclick="shareSelectedWA()">WA Share Selected</button>
+      </div>
+    </div>
     <div id="catbody"></div>
   </div>
 </div>
@@ -523,13 +547,14 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <script>
-var DB={entries:[],subs:{gold:[],silver:[],diamond:[]},items:{}};
+var DB={entries:[],subs:{gold:[],silver:[],diamond:[]},items:{},collections:{gold:[],silver:[],diamond:[]}};
 var dbVersion=0; // bumped whenever entries/images change, so the catalogue tree cache knows to rebuild
 var driveFileId=null;
 var sides={front:null,back:null},shopPhs=[],supSV=0;
 var ic=0,crC=0,prC=0,iPhs={},iStars={},iVer={},gCnt={},gPhs={};
 var csort="tunch",cdir="asc";
-var catMaster="",catSort="none",viewSt={};
+var catMaster="",catSort="none",catCollection="",viewSt={};
+var catSelecting=false, catSelected={}; // key: entryId_itemIdx_imgIdx -> {src,mediaType,itemName}
 var lbImgs=[],lbMeta=[],lbIdx=0;
 var Z={scale:1,minS:1,maxS:5,ox:0,oy:0},PinchSt={on:false,d0:0,s0:1},DragSt={on:false,sx:0,sy:0,ox0:0,oy0:0};
 var lastTap=0,zHintT,zLvlT,swX=0,curLnk="";
@@ -1577,16 +1602,78 @@ var debouncedRenderBr = debounce(function(){ renderBr(); }, 180);
 
 function renderBr(){var by=document.getElementById("brby").value,mf=document.getElementById("brm").value,q=(document.getElementById("brsrch").value||"").toLowerCase();var flat=[];DB.entries.forEach(function(e){var sup=e.supplier||{};(e.items||[]).forEach(function(it,ii){if(mf&&it.master!==mf)return;if(q){var h=(it.itemName+it.submaster+(sup.firm||"")+(sup.contacts||[]).map(function(c){return c.name;}).join("")).toLowerCase();if(h.indexOf(q)<0)return;}var o=Object.assign({},it);o.sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";o.sId=e.id;o.sSt=sup.stars||0;o.sPhs=sup.phones||[];o.itemIdx=ii;flat.push(o);});});var c=document.getElementById("brres");if(!flat.length){c.innerHTML='<div class="empty"><div class="eicon">?</div>No entries found</div>';return;}if(by==="item"){var gr={};flat.forEach(function(it){var k=it.master+"|"+it.submaster+"|"+it.itemName;if(!gr[k])gr[k]=[];gr[k].push(it);});c.innerHTML=Object.entries(gr).map(function(kv){var k=kv[0],ents=kv[1];var parts=k.split("|");var m=parts[0],sm=parts[1],itN=parts[2];return'<div class="supcard"><div style="display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:8px"><div><div style="font-weight:600">'+esc(itN||"--")+'</div><div style="display:flex;gap:4px;margin-top:2px"><span class="badge '+m+'">'+m+'</span><span style="font-size:11px;color:var(--txt3)">'+esc(sm)+'</span></div></div><span style="font-size:11px;color:var(--txt3)">'+ents.length+" supplier"+(ents.length>1?"s":"")+"</span></div>"+ents.map(function(it){return'<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--bdr)"><div><div style="font-size:12px;font-weight:500">'+esc(it.sN)+'</div><div style="font-size:10px;color:var(--txt3)">'+(it.date||"")+(it.meltingVerified?" V":"")+'</div><div style="color:var(--brand);font-size:11px">'+"*".repeat(it.stars||0)+'</div></div><div style="display:flex;align-items:center;gap:6px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;text-align:right"><div><div style="font-size:10px;color:var(--txt3)">Tunch</div><div style="font-size:13px;font-weight:600">'+(it.tunch||"--")+'</div></div><div><div style="font-size:10px;color:var(--txt3)">Labour</div><div style="font-size:13px;font-weight:600">'+(it.labour||"--")+'</div></div></div><button type="button" class="qminibtn" style="font-size:15px" onclick="openBrEdit(\''+it.sId+'\','+it.itemIdx+')" title="Edit">&#9998;</button></div></div>';}).join("")+"</div>";}).join("");}else{var gr2={};flat.forEach(function(it){if(!gr2[it.sId])gr2[it.sId]={n:it.sN,st:it.sSt,ph:it.sPhs,items:[]};gr2[it.sId].items.push(it);});c.innerHTML=Object.entries(gr2).map(function(kv){var sid=kv[0],g=kv[1];var ini=(g.n||"?").substring(0,2).toUpperCase();return'<div class="supcard"><div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><div class="supav">'+ini+'</div><div><div style="font-weight:600">'+esc(g.n)+'</div><div style="font-size:11px;color:var(--txt3)">'+g.ph.map(function(p){return p.number;}).join(" - ")+'</div><div style="color:var(--brand);font-size:11px">'+"*".repeat(g.st)+"</div></div></div>"+g.items.map(function(it){return'<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid var(--bdr)"><div><span class="badge '+it.master+'" style="margin-right:4px">'+it.master+'</span><span style="font-size:12px">'+esc(it.submaster)+" > "+esc(it.itemName||"--")+'</span></div><div style="display:flex;align-items:center;gap:6px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;text-align:right"><div><div style="font-size:10px;color:var(--txt3)">Tunch</div><div style="font-size:13px;font-weight:600">'+(it.tunch||"--")+'</div></div><div><div style="font-size:10px;color:var(--txt3)">Labour</div><div style="font-size:13px;font-weight:600">'+(it.labour||"--")+'</div></div></div><button type="button" class="qminibtn" style="font-size:15px" onclick="openBrEdit(\''+it.sId+'\','+it.itemIdx+')" title="Edit">&#9998;</button></div></div>';}).join("")+"</div>";}).join("");}}
 
-function setCM(m,el){catMaster=m;document.querySelectorAll(".chip").forEach(function(c){c.classList.remove("active");});el.classList.add("active");renderCat();}
-function setCatSort(s,el){catSort=s;document.querySelectorAll(".fpill").forEach(function(p){p.classList.remove("active");});el.classList.add("active");renderCat();}
+function setCM(m,el){catMaster=m;catCollection="";document.querySelectorAll(".chip").forEach(function(c){c.classList.remove("active");});el.classList.add("active");renderCat();}
+function setCatSort(s,el){catSort=s;document.querySelectorAll(".fpill").forEach(function(p){if(p.id!=="catSelBtn")p.classList.remove("active");});el.classList.add("active");renderCat();}
 function getView(k){return viewSt[k]||"grid2";}
 function setVS(k,v){viewSt[k]=v;renderCat();}
 
+// Collections are master-wise; when "All" masters is selected show the union
+// of every master's collection list.
+function liCatCollections(){
+  var sel = document.getElementById("catColSel");
+  if(!sel) return;
+  var keep = catCollection;
+  var names;
+  if(catMaster){
+    names = (DB.collections[catMaster]||[]).slice();
+  } else {
+    var seen = {};
+    ["gold","silver","diamond"].forEach(function(m){ (DB.collections[m]||[]).forEach(function(n){ seen[n]=true; }); });
+    names = Object.keys(seen);
+  }
+  sel.innerHTML = '<option value="">All collections</option>' + names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+"</option>"; }).join("");
+  if(keep && names.indexOf(keep) >= 0) sel.value = keep; else catCollection="";
+}
+
+function setCatCollection(v){ catCollection=v; renderCat(); }
+
+// ===== Multi-select -> share several photos/videos to WhatsApp at once =====
+function toggleCatSelectMode(){
+  catSelecting = !catSelecting;
+  catSelected = {};
+  document.getElementById("catSelBtn").innerHTML = catSelecting ? "&#9745; Selecting" : "&#9744; Select";
+  document.getElementById("catSelBtn").classList.toggle("active", catSelecting);
+  document.getElementById("catSelBar").style.display = catSelecting ? "flex" : "none";
+  renderCat();
+}
+function clearCatSelection(){ catSelected={}; updateCatSelBar(); renderCat(); }
+function updateCatSelBar(){
+  var n = Object.keys(catSelected).length;
+  var el = document.getElementById("catSelCount");
+  if(el) el.textContent = n+" selected";
+}
+function toggleCatSelect(k, src, mediaType, itemName){
+  if(catSelected[k]) delete catSelected[k];
+  else catSelected[k] = {src:src, mediaType:mediaType, itemName:itemName};
+  updateCatSelBar();
+}
+async function shareSelectedWA(){
+  var keys = Object.keys(catSelected);
+  if(!keys.length){ toast("Select at least one photo/video first","err"); return; }
+  var items = keys.map(function(k){ return catSelected[k]; });
+  if(navigator.share && navigator.canShare){
+    try{
+      var files = await Promise.all(items.map(async function(it, i){
+        var r = await fetch(it.src); var blob = await r.blob();
+        var mime = blob.type || "image/jpeg";
+        var ext = mime.indexOf("video")===0 ? (mime.indexOf("mp4")>-1?"mp4":"webm") : (mime.indexOf("png")>-1?"png":"jpg");
+        return new File([blob], (it.itemName||"jewellery")+"_"+(i+1)+"."+ext, {type:mime});
+      }));
+      if(navigator.canShare({files:files})){
+        await navigator.share({files:files, title:"Jewellery Price Book", text:keys.length+" images"});
+        toast("Shared","ok");
+        return;
+      }
+    }catch(e){ /* fall through to text-link fallback below */ }
+  }
+  waFB(keys.length+" jewellery images");
+}
+
 var _catTreeCache=null,_catTreeCacheKey=null;
 function buildCatTree(){
-  var key=dbVersion+"|"+(catMaster||"");
+  var key=dbVersion+"|"+(catMaster||"")+"|"+(catCollection||"");
   if(_catTreeCache && _catTreeCacheKey===key) return _catTreeCache;
-  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
+  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
   _catTreeCache=tree;_catTreeCacheKey=key;
   return tree;
 }
@@ -1611,6 +1698,7 @@ function buildCatData(){
 }
 
 function renderCat(){
+  liCatCollections();
   var tree=buildCatData();
   var body=document.getElementById("catbody");
   if(!Object.keys(tree).length){
@@ -1709,16 +1797,40 @@ function renderCat(){
           card.appendChild(starsDiv);
         }
 
-        var wb=document.createElement("button");wb.className="wabtn";wb.textContent="WA";
-        wb.onclick=function(e){e.stopPropagation();waImg(img.src,itN);};
-        card.appendChild(wb);
+        if(!catSelecting){
+          var wb=document.createElement("button");wb.className="wabtn";wb.textContent="WA";
+          wb.onclick=function(e){e.stopPropagation();waImg(img.src,itN);};
+          card.appendChild(wb);
+        }
+
+        if(img.collection){
+          var colTag=document.createElement("div");
+          colTag.style.cssText="position:absolute;bottom:5px;left:5px;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;padding:2px 5px;border-radius:5px;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+          colTag.textContent=img.collection;
+          card.appendChild(colTag);
+        }
+
+        var selKey = img.entryId+"_"+img.itemIdx+"_"+img.imgIdx;
+        if(catSelecting){
+          var chk=document.createElement("div");
+          chk.className="selchk"+(catSelected[selKey]?" on":"");
+          chk.innerHTML = catSelected[selKey] ? "&#10003;" : "";
+          card.appendChild(chk);
+        }
 
         if(view==="scroll"){
           var scap=document.createElement("div");scap.className="scap";scap.textContent=img.supName||"";
           card.appendChild(scap);
         }
 
-        card.onclick=function(){openLB(allSrcs, allMeta, idx);};
+        card.onclick=function(){
+          if(catSelecting){
+            toggleCatSelect(selKey, img.src, img.mediaType, img.itemName);
+            renderCat();
+          } else {
+            openLB(allSrcs, allMeta, idx);
+          }
+        };
         imgWrap.appendChild(card);
       });
 
@@ -1750,7 +1862,7 @@ function toggleInfo(){
   var p=document.getElementById("infopanel");
   if(p.classList.contains("open")){ p.classList.remove("open"); return; }
   var meta=lbMeta[lbIdx]||{};
-  var rows=[{l:"Item",v:meta.itemName||"--"},{l:"Supplier",v:meta.supName||"--"},{l:"Date",v:meta.date||"--"},{l:"Melting",v:(meta.melting||"--")+(meta.meltingVerified?" V":"")},{l:"Wastage",v:meta.wastage||"--"},{l:"Tunch",v:meta.tunch||"--"},{l:"Labour",v:meta.labour||"--"},{l:"Image Stars",v:(meta.stars||0)+" star"+(meta.stars===1?"":"s")}];
+  var rows=[{l:"Item",v:meta.itemName||"--"},{l:"Supplier",v:meta.supName||"--"},{l:"Date",v:meta.date||"--"},{l:"Collection",v:meta.collection||"--"},{l:"Melting",v:(meta.melting||"--")+(meta.meltingVerified?" V":"")},{l:"Wastage",v:meta.wastage||"--"},{l:"Tunch",v:meta.tunch||"--"},{l:"Labour",v:meta.labour||"--"},{l:"Image Stars",v:(meta.stars||0)+" star"+(meta.stars===1?"":"s")}];
   document.getElementById("inforows").innerHTML=rows.map(function(r){return'<div class="inforow"><div class="infolbl">'+r.l+'</div><div class="infoval">'+esc(String(r.v))+"</div></div>";}).join("");
   var editWrap=document.getElementById("infoeditwrap");
   // Editing only makes sense for real saved catalogue items (they carry entryId/itemIdx) -
@@ -1766,7 +1878,15 @@ function toggleInfo(){
 function startInfoEdit(){
   var meta=lbMeta[lbIdx]||{};
   var editWrap=document.getElementById("infoeditwrap");
-  editWrap.innerHTML=
+  var colEditable = !meta.isGrade && meta.imgIdx!==undefined;
+  var colOpts = (DB.collections[meta.master]||[]).map(function(v){return '<option value="'+esc(v)+'"'+(v===meta.collection?" selected":"")+'>'+esc(v)+"</option>";}).join("");
+  var colField = colEditable ? (
+    '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Collection Name</label><div class="irow">'+
+    '<select id="ieCol" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"><option value="">--</option>'+colOpts+'</select>'+
+    '<button type="button" class="btn sm ghost" onclick="ieAddCollection()">+</button>'+
+    '</div></div>'
+  ) : "";
+  editWrap.innerHTML=colField+
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Melting</label><input type="text" inputmode="decimal" id="ieMel" value="'+esc(meta.melting||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Wastage</label><input type="text" inputmode="decimal" id="ieWst" value="'+esc(meta.wastage||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Tunch (auto)</label><input type="text" id="ieTun" value="'+esc(meta.tunch||"")+'" readonly style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--txt3)"></div>'+
@@ -1796,6 +1916,20 @@ function startInfoEdit(){
   };
 }
 
+function ieAddCollection(){
+  var meta=lbMeta[lbIdx]||{};
+  var n=prompt("New collection name for "+(meta.master||"")+":");
+  if(!n || !n.trim()) return;
+  n=n.trim();
+  if(!DB.collections[meta.master]) DB.collections[meta.master]=[];
+  if(DB.collections[meta.master].indexOf(n)<0){ DB.collections[meta.master].push(n); queueSync(); }
+  var sel=document.getElementById("ieCol");
+  if(sel){
+    var o=document.createElement("option"); o.value=n; o.textContent=n;
+    sel.appendChild(o); sel.value=n;
+  }
+}
+
 function saveInfoEdit(){
   var meta=lbMeta[lbIdx];
   if(!meta || meta.entryId===undefined) return;
@@ -1809,6 +1943,13 @@ function saveInfoEdit(){
   it.melting=mel; it.wastage=wst; it.tunch=tun; it.labour=lab;
   // keep the in-memory lightbox meta and the catalogue's cache in sync too
   meta.melting=mel; meta.wastage=wst; meta.tunch=tun; meta.labour=lab;
+  var colSel=document.getElementById("ieCol");
+  if(colSel && !meta.isGrade && meta.imgIdx!==undefined && it.images && it.images[meta.imgIdx]){
+    var newCol=colSel.value;
+    if(typeof it.images[meta.imgIdx]!=="object") it.images[meta.imgIdx]={src:it.images[meta.imgIdx],stars:0,type:"image"};
+    it.images[meta.imgIdx].collection=newCol;
+    meta.collection=newCol;
+  }
   dbVersion++;
   queueSync();
   toast("Updated - syncing to Drive","ok");
@@ -1984,6 +2125,31 @@ function setDP(state,dot,txt){
 }
 
 var _silentAttempt=false;
+var _driveReadyDone=false, _driveReadyResolve;
+var driveReadyPromise=new Promise(function(res){ _driveReadyResolve=res; });
+function markDriveReady(){ if(_driveReadyDone) return; _driveReadyDone=true; _driveReadyResolve(); }
+// Give up waiting on Drive after 5s either way, so anything gated on
+// driveReadyPromise (like the share-target screen) never hangs forever if
+// Google's script is slow to load or the device has no connectivity.
+setTimeout(markDriveReady, 5000);
+
+var TOKEN_CACHE_KEY="pb_gtoken";
+function saveTokenCache(token, expiresInSec){
+  try{
+    localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify({token:token, exp: Date.now() + (expiresInSec||3300)*1000}));
+  }catch(e){}
+}
+function readTokenCache(){
+  try{
+    var raw = localStorage.getItem(TOKEN_CACHE_KEY);
+    if(!raw) return null;
+    var obj = JSON.parse(raw);
+    if(!obj || !obj.token || !obj.exp || obj.exp < Date.now() + 60000) return null; // treat as expired if <60s left
+    return obj;
+  }catch(e){ return null; }
+}
+function clearTokenCache(){ try{ localStorage.removeItem(TOKEN_CACHE_KEY); }catch(e){} }
+
 function initGoogleAuth(){
   if(typeof google === "undefined" || !google.accounts){
     setTimeout(initGoogleAuth, 300);
@@ -2003,17 +2169,37 @@ function initGoogleAuth(){
           toast("Google sign-in failed: "+resp.error,"err");
         }
         _silentAttempt=false;
+        markDriveReady();
         return;
       }
       gAccessToken = resp.access_token;
+      saveTokenCache(resp.access_token, resp.expires_in);
       setDP("ok","OK","Drive connected");
       toast("Connected to Google Drive","ok");
       _silentAttempt=false;
-      loadFromDrive();
+      loadFromDrive().finally(markDriveReady);
     }
   });
-  // Try to reconnect silently using the browser's existing Google session, so
-  // returning users don't have to tap "Connect" on every single app open.
+  // Reuse a still-valid token from the last session first - this is what was
+  // making Drive feel like it "disconnects every time you open the app":
+  // the silent Google reconnect (below) often can't complete quietly inside
+  // an installed/standalone PWA window (it doesn't always share the regular
+  // Chrome browser's Google session/cookies), so it was falling back to
+  // "Tap to connect" on almost every open even though the token from an hour
+  // ago was often still perfectly valid. Skipping straight to a cached token
+  // avoids that round-trip entirely whenever possible.
+  var cached = readTokenCache();
+  if(cached){
+    gAccessToken = cached.token;
+    setDP("ok","OK","Drive connected");
+    loadFromDrive().finally(markDriveReady);
+    return;
+  }
+  // No usable cached token - try to reconnect silently using the browser's
+  // existing Google session, so returning users don't have to tap "Connect"
+  // on every single app open. This still won't always succeed inside a
+  // standalone PWA window, which is a platform limitation (no refresh-token
+  // flow) rather than a bug - see the note above.
   _silentAttempt=true;
   tokenClient.requestAccessToken({prompt:""});
 }
@@ -2235,6 +2421,7 @@ async function driveApiFetch(url, options){
   var resp = await fetch(url, options);
   if(resp.status === 401){
     gAccessToken = null;
+    clearTokenCache();
     setDP("err","!","Reconnect needed");
     throw new Error("Token expired - tap Drive pill to reconnect");
   }
@@ -2482,6 +2669,11 @@ async function maybeOpenShareScreen(){
     return;
   }
   shareRecords = records;
+  // Wait for the existing sub-master/item/supplier/collection lists to load
+  // from Drive first (capped at 5s by driveReadyPromise itself) so the
+  // dropdowns below open already populated, instead of empty.
+  toast("Loading your saved data...","info");
+  await driveReadyPromise;
   openShareScreen();
 }
 
@@ -2490,21 +2682,24 @@ function openShareScreen(){
   shareThumbUrls = [];
   var wrap = document.getElementById("shThumbs");
   wrap.innerHTML = "";
-  shareRecords.forEach(function(rec){
+  shareRecords.forEach(function(rec, i){
     var url = URL.createObjectURL(rec.blob);
     shareThumbUrls.push(url);
     var isVideo = (rec.type||"").indexOf("video") === 0;
+    var el;
     if(isVideo){
-      var v = document.createElement("video");
-      v.src = url; v.className = "thumb"; v.muted = true; v.playsInline = true;
-      wrap.appendChild(v);
+      el = document.createElement("video");
+      el.src = url; el.muted = true; el.playsInline = true;
     } else {
-      var img = document.createElement("img");
-      img.src = url; img.className = "thumb";
-      wrap.appendChild(img);
+      el = document.createElement("img");
+      el.src = url;
     }
+    el.className = "thumb";
+    el.title = "Item "+(i+1);
+    wrap.appendChild(el);
   });
   document.getElementById("shsup").value = "";
+  document.getElementById("shColAll").checked = true;
   renderShareSupplierList();
   setShareMaster("gold", document.querySelector("#shMseg button"));
   document.getElementById("share-modal").classList.add("open");
@@ -2523,6 +2718,7 @@ function setShareMaster(m, btn){
   document.querySelectorAll("#shMseg button").forEach(function(b){ b.className=""; });
   if(btn) btn.className = m==="gold"?"ag":m==="silver"?"as":"ad";
   liShareSubs(m);
+  liShareCollections(m);
 }
 
 function liShareSubs(m){
@@ -2565,6 +2761,49 @@ function addShareItem(){
   document.getElementById("shit").value = n;
 }
 
+// ===== Collection Name (master-wise, e.g. Gold -> "Ladies Ring") =====
+// A collection sits directly under a Master - it's independent of, and can
+// be reused across, any Sub-Master/Item under that master. Every image or
+// video attached anywhere in the app carries a .collection tag.
+function liShareCollections(m){
+  var s = document.getElementById("shcol");
+  var keep = s.value;
+  s.innerHTML = '<option value="">--</option>';
+  (DB.collections[m]||[]).forEach(function(v){ s.innerHTML += '<option value="'+esc(v)+'">'+esc(v)+"</option>"; });
+  if(keep && (DB.collections[m]||[]).indexOf(keep) >= 0) s.value = keep;
+  buildShareColAllOptions();
+  onShareColAllChange();
+}
+
+function addShareCollection(){
+  var n = prompt("New collection name for "+shareMaster+" (e.g. Ladies Ring):");
+  if(!n || !n.trim()) return;
+  n = n.trim();
+  if(!DB.collections[shareMaster]) DB.collections[shareMaster] = [];
+  if(DB.collections[shareMaster].indexOf(n) < 0){ DB.collections[shareMaster].push(n); queueSync(); }
+  liShareCollections(shareMaster);
+  document.getElementById("shcol").value = n;
+  onShareColAllChange();
+}
+
+// Rebuilds the per-image collection dropdowns (used when "apply to all" is
+// unchecked) so each shared photo/video can get its own collection tag.
+function buildShareColAllOptions(){
+  var wrap = document.getElementById("shPerImgCols");
+  var opts = (DB.collections[shareMaster]||[]).map(function(v){ return '<option value="'+esc(v)+'">'+esc(v)+"</option>"; }).join("");
+  wrap.innerHTML = shareRecords.map(function(rec, i){
+    return '<div class="fg" style="margin-bottom:6px"><label style="font-size:11px">Item '+(i+1)+' collection</label>'+
+      '<select id="shcolimg'+i+'"><option value="">--</option>'+opts+'</select></div>';
+  }).join("");
+}
+
+function onShareColAllChange(){
+  var all = document.getElementById("shColAll").checked;
+  document.getElementById("shcol").parentElement.parentElement.style.display = all ? "" : "none";
+  // shcol's own .fg wrapper is two levels up from the select (select -> .irow -> .fg)
+  document.getElementById("shPerImgCols").style.display = all ? "none" : "block";
+}
+
 function renderShareSupplierList(){
   var dl = document.getElementById("shSupList");
   if(!dl) return;
@@ -2577,19 +2816,19 @@ function renderShareSupplierList(){
   dl.innerHTML = Object.keys(names).map(function(n){ return '<option value="'+esc(n)+'">'; }).join("");
 }
 
-// Converts a shared Blob into the same {src,stars,type} shape used
+// Converts a shared Blob into the same {src,stars,type,collection} shape used
 // everywhere else in the app for item images/videos - photos get run
 // through the usual compression pass, videos are kept as-is.
-function shareBlobToImage(rec){
+function shareBlobToImage(rec, collection){
   return new Promise(function(resolve){
     var isVideo = (rec.type||"").indexOf("video") === 0;
     var r = new FileReader();
     r.onload = function(ev){
       if(isVideo){
-        resolve({src:ev.target.result, stars:0, type:"video"});
+        resolve({src:ev.target.result, stars:0, type:"video", collection:collection||""});
       } else {
         compressImage(ev.target.result, 1280, 0.75).then(function(src){
-          resolve({src:src, stars:0, type:"image"});
+          resolve({src:src, stars:0, type:"image", collection:collection||""});
         });
       }
     };
@@ -2602,15 +2841,31 @@ async function saveShareMedia(){
   var sm = document.getElementById("shsm").value;
   var itN = document.getElementById("shit").value;
   var supName = document.getElementById("shsup").value.trim();
+  var colAll = document.getElementById("shColAll").checked;
   if(!sm){ toast("Pick a Sub-Master","err"); return; }
   if(!itN){ toast("Pick an Item","err"); return; }
   if(!supName){ toast("Enter a supplier name","err"); return; }
+
+  // Collection Name is mandatory whenever media is being attached.
+  var perImgCols = [];
+  if(colAll){
+    var c = document.getElementById("shcol").value;
+    if(!c){ toast("Pick (or add) a Collection Name","err"); return; }
+    perImgCols = shareRecords.map(function(){ return c; });
+  } else {
+    for(var i=0;i<shareRecords.length;i++){
+      var v = (document.getElementById("shcolimg"+i)||{}).value;
+      if(!v){ toast("Pick a collection for Item "+(i+1),"err"); return; }
+      perImgCols.push(v);
+    }
+  }
+
   var btn = document.getElementById("shSaveBtn");
   btn.disabled = true; btn.style.opacity = "0.6";
   try{
     var images = [];
-    for(var i=0;i<shareRecords.length;i++){
-      var im = await shareBlobToImage(shareRecords[i]);
+    for(var j=0;j<shareRecords.length;j++){
+      var im = await shareBlobToImage(shareRecords[j], perImgCols[j]);
       if(im) images.push(im);
     }
     if(!images.length){ toast("Couldn't read the shared media","err"); return; }
