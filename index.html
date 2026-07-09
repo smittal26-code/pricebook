@@ -285,6 +285,24 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     </div>
   </div>
 </div>
+<!-- Generic "pick a collection name" modal - reused wherever photos/videos get
+     attached to an item (Add page camera/gallery capture, item media edits). -->
+<div class="mbg" id="colpick-modal">
+  <div class="modal" style="max-width:340px">
+    <div class="mhead"><h3>&#127991; Collection Name</h3></div>
+    <div class="mbody">
+      <div class="fg"><label>Required for these photos/videos</label><div class="irow">
+        <select id="cpkSel"><option value="">--</option></select>
+        <button type="button" class="btn sm ghost" onclick="cpkAddNew()">+</button>
+      </div></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn sm ghost" style="flex:1;justify-content:center" onclick="cpkCancel()">Cancel</button>
+        <button class="btn sm pri" style="flex:1;justify-content:center" onclick="cpkConfirm()">Use this</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Shared media modal - filled in when the app is opened via the OS share sheet (Web Share Target) -->
 <div class="mbg" id="share-modal">
   <div class="modal" style="max-width:420px">
@@ -316,8 +334,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       </label>
       <div id="shPerImgCols" style="display:none;margin-bottom:10px"></div>
       <div class="fg" style="margin-bottom:8px"><label>Supplier</label>
-        <input type="text" id="shsup" list="shSupList" placeholder="Search or type a new supplier name">
-        <datalist id="shSupList"></datalist>
+        <select id="shsupSel" onchange="onShareSupSelChange()"><option value="">-- Select supplier --</option><option value="__new__">+ New supplier...</option></select>
+        <input type="text" id="shsup" placeholder="New supplier name" style="display:none;margin-top:6px">
       </div>
       <div style="display:flex;gap:7px;justify-content:flex-end;margin-top:9px">
         <button class="btn" onclick="closeShareScreen()">Cancel</button>
@@ -958,6 +976,48 @@ function onSMChange(id){
 var qImgs={}, qStars={};
 function rk(id,name){ return id+"__"+String(name).replace(/[^a-zA-Z0-9]/g,"_"); }
 
+// ===== Generic Collection Name picker (used by camera + gallery capture) =====
+// Every photo/video added anywhere in the app must carry a Collection Name.
+// This opens a small modal, returns a Promise that resolves to the chosen
+// name, or null if the user cancels (in which case the caller should not
+// save the media).
+var _cpkResolve=null;
+function pickCollectionName(master){
+  return new Promise(function(resolve){
+    _cpkResolve = resolve;
+    var sel=document.getElementById("cpkSel");
+    sel.setAttribute("data-master", master);
+    sel.innerHTML='<option value="">--</option>'+(DB.collections[master]||[]).map(function(v){return '<option value="'+esc(v)+'">'+esc(v)+"</option>";}).join("");
+    document.getElementById("colpick-modal").classList.add("open");
+  });
+}
+function cpkAddNew(){
+  var sel=document.getElementById("cpkSel");
+  var master=sel.getAttribute("data-master");
+  var n=prompt("New collection name for "+master+" (e.g. Ladies Ring):");
+  if(!n||!n.trim())return;
+  n=n.trim();
+  if(!DB.collections[master]) DB.collections[master]=[];
+  if(DB.collections[master].indexOf(n)<0){ DB.collections[master].push(n); queueSync(); }
+  var o=document.createElement("option"); o.value=n; o.textContent=n;
+  sel.appendChild(o); sel.value=n;
+}
+function cpkConfirm(){
+  var sel=document.getElementById("cpkSel");
+  if(!sel.value){ toast("Pick or add a collection name","err"); return; }
+  document.getElementById("colpick-modal").classList.remove("open");
+  var r=_cpkResolve; _cpkResolve=null;
+  if(r) r(sel.value);
+}
+function cpkCancel(){
+  document.getElementById("colpick-modal").classList.remove("open");
+  var r=_cpkResolve; _cpkResolve=null;
+  if(r) r(null);
+}
+// key = rk(id,name) = "<itemBlockId>__<sanitized item name>" - the master for
+// that item block is whatever its own Gold/Silver/Diamond selector is set to.
+function qKeyMaster(key){ return getIM(key.split("__")[0]); }
+
 function renderQuickTable(id,m,sm){
   var wrap=document.getElementById("qtbl"+id);
   if(!wrap)return;
@@ -1047,18 +1107,24 @@ function qCalcTunch(key){
   tunEl.value=(mel+(parseFloat(wst)||0)).toFixed(2);
 }
 
-function addQIPhs(e,key){
+async function addQIPhs(e,key){
+  var files = Array.from(e.target.files);
+  e.target.value = ""; // allow re-picking the same file(s) later
+  if(!files.length) return;
+  var master = qKeyMaster(key);
+  var collection = await pickCollectionName(master);
+  if(!collection){ toast("Cancelled - a collection name is required","err"); return; }
   if(!qImgs[key])qImgs[key]=[];
-  Array.from(e.target.files).forEach(function(f){
+  files.forEach(function(f){
     var isVideo = f.type.indexOf("video")===0;
     var r=new FileReader();
     r.onload=function(ev){
       if(isVideo){
-        qImgs[key].push({src:ev.target.result,stars:0,type:"video"});
+        qImgs[key].push({src:ev.target.result,stars:0,type:"video",collection:collection});
         updateQThumbBadge(key);
       } else {
         compressImage(ev.target.result,1280,0.75).then(function(src){
-          qImgs[key].push({src:src,stars:0,type:"image"});
+          qImgs[key].push({src:src,stars:0,type:"image",collection:collection});
           updateQThumbBadge(key);
         });
       }
@@ -1215,13 +1281,17 @@ function closeCameraCapture(){
   camImageCapture=null;
   document.getElementById("camModal").style.display="none";
 }
-function doneCameraCapture(){
-  if(camTargetKey && camBatch.length){
-    if(!qImgs[camTargetKey]) qImgs[camTargetKey]=[];
-    camBatch.forEach(function(item){ qImgs[camTargetKey].push({src:item.src,stars:0,type:item.type||"image"}); });
-    updateQThumbBadge(camTargetKey);
+async function doneCameraCapture(){
+  var targetKey = camTargetKey, batch = camBatch.slice();
+  closeCameraCapture(); // release the camera stream immediately, don't hold it up on the prompt
+  if(targetKey && batch.length){
+    var master = qKeyMaster(targetKey);
+    var collection = await pickCollectionName(master);
+    if(!collection){ toast("Cancelled - a collection name is required","err"); return; }
+    if(!qImgs[targetKey]) qImgs[targetKey]=[];
+    batch.forEach(function(item){ qImgs[targetKey].push({src:item.src,stars:0,type:item.type||"image",collection:collection}); });
+    updateQThumbBadge(targetKey);
   }
-  closeCameraCapture();
 }
 document.getElementById("camShotBtn").onclick=captureShot;
 document.getElementById("camVidBtn").onclick=toggleVideoRecord;
@@ -2805,15 +2875,32 @@ function onShareColAllChange(){
 }
 
 function renderShareSupplierList(){
-  var dl = document.getElementById("shSupList");
-  if(!dl) return;
+  var sel = document.getElementById("shsupSel");
+  if(!sel) return;
   var names = {};
   (DB.entries||[]).forEach(function(e){
     var sup = e.supplier||{};
     var n = sup.firm || ((sup.contacts||[])[0]||{}).name;
     if(n) names[n] = true;
   });
-  dl.innerHTML = Object.keys(names).map(function(n){ return '<option value="'+esc(n)+'">'; }).join("");
+  sel.innerHTML = '<option value="">-- Select supplier --</option>' +
+    Object.keys(names).sort(function(a,b){return a.localeCompare(b);}).map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+"</option>"; }).join("") +
+    '<option value="__new__">+ New supplier...</option>';
+  document.getElementById("shsup").style.display = "none";
+  document.getElementById("shsup").value = "";
+}
+
+function onShareSupSelChange(){
+  var sel = document.getElementById("shsupSel");
+  var txt = document.getElementById("shsup");
+  if(sel.value === "__new__"){
+    txt.style.display = "block";
+    txt.value = "";
+    txt.focus();
+  } else {
+    txt.style.display = "none";
+    txt.value = "";
+  }
 }
 
 // Converts a shared Blob into the same {src,stars,type,collection} shape used
@@ -2840,7 +2927,8 @@ function shareBlobToImage(rec, collection){
 async function saveShareMedia(){
   var sm = document.getElementById("shsm").value;
   var itN = document.getElementById("shit").value;
-  var supName = document.getElementById("shsup").value.trim();
+  var supSelVal = document.getElementById("shsupSel").value;
+  var supName = supSelVal === "__new__" ? document.getElementById("shsup").value.trim() : supSelVal.trim();
   var colAll = document.getElementById("shColAll").checked;
   if(!sm){ toast("Pick a Sub-Master","err"); return; }
   if(!itN){ toast("Pick an Item","err"); return; }
