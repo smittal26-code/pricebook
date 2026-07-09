@@ -248,7 +248,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <div class="logo"><div class="logo-gem">&#10022;</div>Price Book</div>
   <div style="display:flex;gap:6px;align-items:center">
     <button id="ios-install-btn" onclick="showiOSInstall()" style="display:none;background:var(--brand);color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">+ Home</button>
-    <div class="drive-pill loading" id="dpill" onclick="syncDrive()" style="cursor:pointer;min-width:90px"><span id="ddot">&#9203;</span> <span id="dtxt">Tap to connect</span></div>
+    <div class="drive-pill loading" id="dpill" onclick="openDrivesModal()" style="cursor:pointer;min-width:90px"><span id="ddot">&#9203;</span> <span id="dtxt">Tap to connect</span></div>
   </div>
 </div>
 
@@ -285,6 +285,21 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     </div>
   </div>
 </div>
+<!-- Manage Drives - connect/label/reconnect multiple Google Drive accounts, and
+     pick which one is currently "active" (receives new saves) per master. -->
+<div class="mbg" id="drives-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="mhead"><h3>&#9729; Manage Drives</h3><button class="btn xs dan" onclick="closeDrivesModal()">X</button></div>
+    <div class="mbody">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:11px;color:var(--txt3)">Green dot = connected. Tap a name to make it the active upload target for that master.</span>
+      </div>
+      <button type="button" class="btn xs ghost" style="margin-bottom:10px" onclick="syncDrive()">&#8635; Reconnect / refresh all</button>
+      <div id="drivesBody"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Generic "pick a collection name" modal - reused wherever photos/videos get
      attached to an item (Add page camera/gallery capture, item media edits). -->
 <div class="mbg" id="colpick-modal">
@@ -1587,7 +1602,32 @@ async function saveAll(){
   var btn=document.getElementById("saveEntryBtn");
   if(btn){btn.disabled=true;btn.style.opacity="0.6";}
   try{
-    var items=colItems();var entry={id:String(Date.now()),supplier:sup,items:items,savedAt:new Date().toISOString()};DB.entries.push(entry);dbVersion++;queueSync();toast("Saved: "+(sup.firm||(sup.contacts[0]||{}).name||"Entry")+" - "+items.length+" item(s) - syncing to Drive","ok");setTimeout(clearAll,400);
+    var items=colItems();
+    if(!items.length){ toast("No items to save","err"); return; }
+    // A single supplier visit can include Gold/Silver/Diamond items, each of
+    // which may belong to a completely different Drive account - split into
+    // one shadow entry per master present, each tagged with that master's
+    // currently active account. They all share the same supplier info and
+    // firm name, so Suppliers/Catalogue/Browse (which already group by
+    // supplier name, not by entry id) recombine them into one card/view
+    // automatically - no other code needed to change for this to work.
+    var byMaster={};
+    items.forEach(function(it){ var m=it.master||"gold"; if(!byMaster[m]) byMaster[m]=[]; byMaster[m].push(it); });
+    var savedCount=0, blocked=[];
+    Object.keys(byMaster).forEach(function(m){
+      var accId = activeByMaster[m];
+      if(!accId){ blocked.push(m); return; }
+      DB.entries.push({id:String(Date.now())+"_"+m, supplier:sup, items:byMaster[m], savedAt:new Date().toISOString(), _acc:accId});
+      savedCount += byMaster[m].length;
+    });
+    dbVersion++;
+    if(savedCount) queueSync();
+    if(blocked.length){
+      toast("No Drive connected for "+blocked.join(", ")+" yet - connect one in Manage Drives. "+(savedCount?"Rest saved.":"Nothing saved."),"err");
+    } else {
+      toast("Saved: "+(sup.firm||(sup.contacts[0]||{}).name||"Entry")+" - "+items.length+" item(s) - syncing to Drive","ok");
+    }
+    if(savedCount) setTimeout(clearAll,400);
   } finally {
     window._savingEntry=false;
     if(btn){btn.disabled=false;btn.style.opacity="1";}
@@ -2179,8 +2219,10 @@ function renderSup(){
 
 var DRFILE = "jewellery_pricebook_v4.json";
 var GOOGLE_CLIENT_ID = "780713222130-n1pla1u98rf13d7i56gf9je6hrv6hosg.apps.googleusercontent.com";
-var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-var gAccessToken = null;
+// "email" scope added so each connected account can be labeled with the
+// actual Google account email in the Manage Drives screen, and so silent
+// reconnects can be targeted at the right account via a login hint.
+var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
 var tokenClient = null;
 // Paste your deployed Apps Script Web App URL here (see Code.gs setup instructions).
 // Example: "https://script.google.com/macros/s/AKfycbx.../exec"
@@ -2194,118 +2236,152 @@ function setDP(state,dot,txt){
   document.getElementById("dtxt").textContent=txt;
 }
 
-var _silentAttempt=false;
 var _driveReadyDone=false, _driveReadyResolve;
 var driveReadyPromise=new Promise(function(res){ _driveReadyResolve=res; });
 function markDriveReady(){ if(_driveReadyDone) return; _driveReadyDone=true; _driveReadyResolve(); }
-// Give up waiting on Drive after 5s either way, so anything gated on
+// Give up waiting on Drive after 6s either way, so anything gated on
 // driveReadyPromise (like the share-target screen) never hangs forever if
 // Google's script is slow to load or the device has no connectivity.
-setTimeout(markDriveReady, 5000);
+setTimeout(markDriveReady, 6000);
 
-var TOKEN_CACHE_KEY="pb_gtoken";
-function saveTokenCache(token, expiresInSec){
-  try{
-    localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify({token:token, exp: Date.now() + (expiresInSec||3300)*1000}));
-  }catch(e){}
+// ===== Multi-account Drive support =====
+// You can connect any number of Google Drive accounts and assign each one to
+// a Master (Gold/Silver/Diamond). Every master has one "active" account that
+// new saves go to - switchable any time from Manage Drives. All connected
+// accounts are read and merged together for Catalogue/Browse/Suppliers, so
+// day-to-day the whole thing looks like one seamless catalog regardless of
+// how many Drives are actually behind it.
+var ACCOUNTS_KEY="pb_accounts_v1", ACTIVE_KEY="pb_active_by_master_v1";
+var driveAccounts=[];                          // [{id,label,master,email}]
+var activeByMaster={gold:null,silver:null,diamond:null};
+var acctAuth={};                               // accId -> {token,exp}
+var acctFileId={};                             // accId -> DRFILE's Drive fileId (cache)
+var acctImgFolder={};                          // accId -> PricebookImages folder id (cache)
+var acctStatus={};                             // accId -> "idle"|"loading"|"ok"|"err"
+var _pendingConnectId=null;
+
+function loadAccountsConfig(){
+  try{ var raw=localStorage.getItem(ACCOUNTS_KEY); driveAccounts = raw?JSON.parse(raw):[]; }catch(e){ driveAccounts=[]; }
+  try{ var raw2=localStorage.getItem(ACTIVE_KEY); activeByMaster = raw2?JSON.parse(raw2):{gold:null,silver:null,diamond:null}; }catch(e){ activeByMaster={gold:null,silver:null,diamond:null}; }
+  // One-time migration: earlier versions of this app only supported a single
+  // connected Drive. If nothing's configured yet, wrap that old connection up
+  // as a normal account (reusing its cached token so nobody has to
+  // reconnect or loses their existing catalog) and make it the default for
+  // all three masters.
+  if(!driveAccounts.length){
+    driveAccounts=[{id:"legacy", label:"Main Drive", master:null, email:null}];
+    activeByMaster={gold:"legacy", silver:"legacy", diamond:"legacy"};
+    saveAccountsConfig();
+    try{
+      var oldRaw=localStorage.getItem("pb_gtoken");
+      if(oldRaw){
+        var oldTok=JSON.parse(oldRaw);
+        if(oldTok && oldTok.token) localStorage.setItem(acctTokenKey("legacy"), oldRaw);
+      }
+    }catch(e){}
+  }
 }
-function readTokenCache(){
+function saveAccountsConfig(){
+  try{ localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(driveAccounts)); }catch(e){}
+  try{ localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeByMaster)); }catch(e){}
+}
+function acctTokenKey(id){ return "pb_gtoken_"+id; }
+function saveAcctToken(id, token, expiresInSec){
+  var rec={token:token, exp:Date.now()+(expiresInSec||3300)*1000};
+  acctAuth[id]=rec;
+  try{ localStorage.setItem(acctTokenKey(id), JSON.stringify(rec)); }catch(e){}
+}
+function readAcctTokenCache(id){
   try{
-    var raw = localStorage.getItem(TOKEN_CACHE_KEY);
+    var raw=localStorage.getItem(acctTokenKey(id));
     if(!raw) return null;
-    var obj = JSON.parse(raw);
-    if(!obj || !obj.token || !obj.exp || obj.exp < Date.now() + 60000) return null; // treat as expired if <60s left
+    var obj=JSON.parse(raw);
+    if(!obj || !obj.token || !obj.exp || obj.exp < Date.now()+60000) return null;
     return obj;
   }catch(e){ return null; }
 }
-function clearTokenCache(){ try{ localStorage.removeItem(TOKEN_CACHE_KEY); }catch(e){} }
+function clearAcctToken(id){ acctAuth[id]=null; try{ localStorage.removeItem(acctTokenKey(id)); }catch(e){} }
 
-function initGoogleAuth(){
-  if(typeof google === "undefined" || !google.accounts){
-    setTimeout(initGoogleAuth, 300);
-    return;
-  }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: DRIVE_SCOPE,
-    callback: function(resp){
-      if(resp.error){
-        if(_silentAttempt){
-          // Expected to fail sometimes (e.g. first visit, or session expired) - just
-          // fall back to requiring a manual tap, no need to alarm the user about it.
-          setDP("loading","...","Tap to connect");
-        } else {
-          setDP("err","!","Sign-in failed");
-          toast("Google sign-in failed: "+resp.error,"err");
+function ensureTokenClient(){
+  return new Promise(function(resolve){
+    (function poll(){
+      if(typeof google !== "undefined" && google.accounts){
+        if(!tokenClient){
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: DRIVE_SCOPE,
+            callback: function(resp){
+              var id=_pendingConnectId; _pendingConnectId=null;
+              if(!id) return;
+              if(resp.error){ acctAuthCallbackFail(id); return; }
+              acctAuthCallbackSuccess(id, resp);
+            }
+          });
         }
-        _silentAttempt=false;
-        markDriveReady();
-        return;
+        resolve();
+      } else {
+        setTimeout(poll, 300);
       }
-      gAccessToken = resp.access_token;
-      saveTokenCache(resp.access_token, resp.expires_in);
-      setDP("ok","OK","Drive connected");
-      toast("Connected to Google Drive","ok");
-      _silentAttempt=false;
-      loadFromDrive().finally(markDriveReady);
-    }
+    })();
   });
-  // Reuse a still-valid token from the last session first - this is what was
-  // making Drive feel like it "disconnects every time you open the app":
-  // the silent Google reconnect (below) often can't complete quietly inside
-  // an installed/standalone PWA window (it doesn't always share the regular
-  // Chrome browser's Google session/cookies), so it was falling back to
-  // "Tap to connect" on almost every open even though the token from an hour
-  // ago was often still perfectly valid. Skipping straight to a cached token
-  // avoids that round-trip entirely whenever possible.
-  var cached = readTokenCache();
-  if(cached){
-    gAccessToken = cached.token;
-    setDP("ok","OK","Drive connected");
-    loadFromDrive().finally(markDriveReady);
-    return;
-  }
-  // No usable cached token - try to reconnect silently using the browser's
-  // existing Google session, so returning users don't have to tap "Connect"
-  // on every single app open. This still won't always succeed inside a
-  // standalone PWA window, which is a platform limitation (no refresh-token
-  // flow) rather than a bug - see the note above.
-  _silentAttempt=true;
-  tokenClient.requestAccessToken({prompt:""});
 }
-
-function connectDrive(){
-  if(!tokenClient){
-    toast("Google auth still loading, try again in a second","info");
-    initGoogleAuth();
-    return;
-  }
-  setDP("loading","...","Connecting...");
-  tokenClient.requestAccessToken({prompt: gAccessToken ? "" : "consent"});
+var _acctAuthResolvers={};
+function acctAuthCallbackSuccess(id, resp){
+  saveAcctToken(id, resp.access_token, resp.expires_in);
+  fetchAndStoreEmail(id, resp.access_token);
+  if(_acctAuthResolvers[id]){ _acctAuthResolvers[id](true); delete _acctAuthResolvers[id]; }
+}
+function acctAuthCallbackFail(id){
+  if(_acctAuthResolvers[id]){ _acctAuthResolvers[id](false); delete _acctAuthResolvers[id]; }
+}
+async function fetchAndStoreEmail(id, token){
+  try{
+    var resp=await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{headers:{"Authorization":"Bearer "+token}});
+    var info=await resp.json();
+    if(info && info.email){
+      var acc=driveAccounts.find(function(a){return a.id===id;});
+      if(acc && acc.email!==info.email){ acc.email=info.email; saveAccountsConfig(); renderDriveStatus(); }
+    }
+  }catch(e){}
+}
+// Requests a token for one specific account slot. promptMode "" = try silently
+// (needs an existing Google browser session + prior consent), "consent"/
+// "select_account" = show the picker (used when linking a brand new account).
+function requestAccountToken(id, promptMode, hintEmail){
+  return ensureTokenClient().then(function(){
+    return new Promise(function(resolve){
+      _acctAuthResolvers[id]=resolve;
+      _pendingConnectId=id;
+      var params={prompt:promptMode};
+      if(hintEmail) params.hint=hintEmail;
+      tokenClient.requestAccessToken(params);
+    });
+  });
 }
 
 // ===== Drive image externalization =====
-// Images now live as separate files in a "PricebookImages" Drive folder.
-// The main DB JSON only stores a small {driveId} reference per image, so
-// saves/loads stay fast even as the photo library grows. Once fetched, images
-// are cached in IndexedDB so repeat app opens don't re-download anything.
-
-var imgFolderIdCached = null;
+// Images live as separate files in a "PricebookImages" Drive folder inside
+// whichever account owns them. The main DB JSON only stores a small
+// {driveId} reference per image, so saves/loads stay fast even as the photo
+// library grows. Once fetched, images are cached in IndexedDB (keyed by
+// Drive file ID, which Google guarantees is globally unique - safe to share
+// one cache across every connected account) so repeat app opens don't
+// re-download anything.
 var imgCache = {}; // driveId -> dataURL, in-memory for this session
 
-async function getImgFolder(){
-  if(imgFolderIdCached) return imgFolderIdCached;
+async function getImgFolder(accId){
+  if(acctImgFolder[accId]) return acctImgFolder[accId];
   var q = encodeURIComponent("name='PricebookImages' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-  var resp = await driveApiFetch("https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id,name)");
+  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id,name)");
   var data = await resp.json();
-  if(data.files && data.files.length){ imgFolderIdCached = data.files[0].id; return imgFolderIdCached; }
-  var resp2 = await driveApiFetch("https://www.googleapis.com/drive/v3/files", {
+  if(data.files && data.files.length){ acctImgFolder[accId] = data.files[0].id; return acctImgFolder[accId]; }
+  var resp2 = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({name:"PricebookImages", mimeType:"application/vnd.google-apps.folder"})
   });
   var nf = await resp2.json();
-  imgFolderIdCached = nf.id;
-  return imgFolderIdCached;
+  acctImgFolder[accId] = nf.id;
+  return acctImgFolder[accId];
 }
 
 function dataURLtoBlob(dataUrl){
@@ -2318,17 +2394,17 @@ function dataURLtoBlob(dataUrl){
   return new Blob([u8],{type:mime});
 }
 
-async function driveUploadImage(dataUrl){
-  var folderId=await getImgFolder();
+async function driveUploadImage(accId, dataUrl){
+  var folderId=await getImgFolder(accId);
   var name="img_"+Date.now()+"_"+Math.random().toString(36).slice(2,8)+".jpg";
-  var createResp=await driveApiFetch("https://www.googleapis.com/drive/v3/files",{
+  var createResp=await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files",{
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({name:name,parents:[folderId]})
   });
   var created=await createResp.json();
   var fileId=created.id;
   var blob=dataURLtoBlob(dataUrl);
-  await driveApiFetch("https://www.googleapis.com/upload/drive/v3/files/"+fileId+"?uploadType=media",{
+  await driveApiFetch(accId, "https://www.googleapis.com/upload/drive/v3/files/"+fileId+"?uploadType=media",{
     method:"PATCH",headers:{"Content-Type":blob.type||"image/jpeg"},body:blob
   });
   imgCache[fileId]=dataUrl; // we already have it locally, no need to ever re-download this one
@@ -2336,11 +2412,11 @@ async function driveUploadImage(dataUrl){
   return fileId;
 }
 
-async function driveFetchImage(fileId){
+async function driveFetchImage(accId, fileId){
   if(imgCache[fileId]) return imgCache[fileId];
   var cached=await idbGetImg(fileId);
   if(cached){ imgCache[fileId]=cached; return cached; }
-  var resp=await driveApiFetch("https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media");
+  var resp=await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media");
   var blob=await resp.blob();
   var dataUrl=await new Promise(function(resolve){
     var r=new FileReader();r.onload=function(){resolve(r.result);};r.readAsDataURL(blob);
@@ -2386,10 +2462,12 @@ async function idbSetImg(key,val){
 
 // Upload any images that haven't been offloaded to Drive yet (tagged via
 // photosRef/cardImagesRef arrays, or .driveId on item/grade image objects).
-// Already-uploaded images are skipped, so re-saving is fast.
-async function uploadPendingImages(db){
+// Already-uploaded images are skipped, so re-saving is fast. Operates on a
+// plain array of entries (one account's slice) and uploads through that
+// account's own token.
+async function uploadPendingImages(accId, entries){
   var pending=[];
-  (db.entries||[]).forEach(function(e){
+  (entries||[]).forEach(function(e){
     var sup=e.supplier||{};
     if(sup.photos && sup.photos.length){
       if(!sup.photosRef) sup.photosRef=[];
@@ -2418,16 +2496,16 @@ async function uploadPendingImages(db){
   for(var i=0;i<pending.length;i+=CONCURRENCY){
     var batch=pending.slice(i,i+CONCURRENCY);
     await Promise.all(batch.map(async function(p){
-      try{ var id=await driveUploadImage(p.src); p.setId(id); }catch(e){ console.log("image upload failed:",e); }
+      try{ var id=await driveUploadImage(accId, p.src); p.setId(id); }catch(e){ console.log("image upload failed:",e); }
     }));
   }
 }
 
-// Build the JSON that actually gets written to Drive: strips inline image
-// bytes wherever a driveId reference already exists (kept as fallback
-// otherwise, e.g. if an upload failed).
-function slimForDrive(db){
-  var slim=JSON.parse(JSON.stringify(db));
+// Builds the JSON that actually gets written to Drive for one account: strips
+// inline image bytes wherever a driveId reference already exists (kept as
+// fallback otherwise, e.g. if an upload failed).
+function slimForDrive(payload){
+  var slim=JSON.parse(JSON.stringify(payload));
   (slim.entries||[]).forEach(function(e){
     var sup=e.supplier||{};
     if(sup.photos && sup.photosRef){
@@ -2446,12 +2524,13 @@ function slimForDrive(db){
   return slim;
 }
 
-// After loading the slim JSON from Drive, fetch each referenced image and
-// restore .src/.photos/.cardImages so all existing rendering code works
-// exactly as before - it never needs to know images live externally.
-async function hydrateImages(db){
+// After loading the slim JSON from Drive, fetch each referenced image (using
+// that account's own token) and restore .src/.photos/.cardImages so all
+// existing rendering code works exactly as before - it never needs to know
+// images live externally, or which account they came from.
+async function hydrateImages(accId, entries){
   var refs=[];
-  (db.entries||[]).forEach(function(e){
+  (entries||[]).forEach(function(e){
     var sup=e.supplier||{};
     if(sup.photosRef && sup.photosRef.length){
       sup.photos=sup.photos||[];
@@ -2476,65 +2555,200 @@ async function hydrateImages(db){
   for(var i=0;i<refs.length;i+=CONCURRENCY){
     var batch=refs.slice(i,i+CONCURRENCY);
     await Promise.all(batch.map(async function(r){
-      try{ var src=await driveFetchImage(r.id); r.setSrc(src); }catch(e){ console.log("image fetch failed:",e); }
+      try{ var src=await driveFetchImage(accId, r.id); r.setSrc(src); }catch(e){ console.log("image fetch failed:",e); }
     }));
   }
 }
 
-async function driveApiFetch(url, options){
-  if(!gAccessToken){
-    throw new Error("Not connected to Drive yet");
+async function driveApiFetch(accId, url, options){
+  var auth=acctAuth[accId];
+  if(!auth || !auth.token){
+    throw new Error("Drive account '"+accId+"' is not connected");
   }
   options = options || {};
   options.headers = options.headers || {};
-  options.headers["Authorization"] = "Bearer " + gAccessToken;
+  options.headers["Authorization"] = "Bearer " + auth.token;
   var resp = await fetch(url, options);
   if(resp.status === 401){
-    gAccessToken = null;
-    clearTokenCache();
-    setDP("err","!","Reconnect needed");
-    throw new Error("Token expired - tap Drive pill to reconnect");
+    acctAuth[accId]=null;
+    clearAcctToken(accId);
+    acctStatus[accId]="err";
+    renderDriveStatus();
+    throw new Error("Drive account '"+accId+"' token expired - reconnect it in Manage Drives");
   }
   return resp;
 }
 
-var driveFileIdCached = null;
-
-async function findDriveFile(){
+async function findDriveFile(accId){
+  if(acctFileId[accId]) return acctFileId[accId];
   var q = encodeURIComponent("name='" + DRFILE + "' and trashed=false");
-  var resp = await driveApiFetch("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name)");
+  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name)");
   var data = await resp.json();
   if(data.files && data.files.length > 0){
-    return data.files[0].id;
+    acctFileId[accId]=data.files[0].id;
+    return acctFileId[accId];
   }
   return null;
 }
 
-async function loadFromDrive(){
+// Loads one account's catalog file, tags every entry with which account it
+// came from (_acc), merges its subs/items/collections taxonomy into the
+// shared in-memory copy, and hydrates its images. Entries from every
+// connected account all live together in the same flat DB.entries array
+// afterward - Catalogue/Browse/Suppliers/Compare already group dynamically
+// by supplier name / master / submaster, so they merge into one seamless
+// view with no further changes needed on the read side.
+async function loadOneAccountData(accId){
+  var fileId = await findDriveFile(accId);
+  if(!fileId) return; // nothing saved in this account yet - not an error
+  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media");
+  var data = await resp.json();
+  if(!data) return;
+  var entries = data.entries || [];
+  entries.forEach(function(e){ e._acc = accId; });
+  await hydrateImages(accId, entries);
+  // Remove any previous entries from this same account before merging in the
+  // fresh copy (keeps re-loads / reconnects idempotent instead of duplicating).
+  DB.entries = DB.entries.filter(function(e){ return e._acc !== accId; }).concat(entries);
+  ["gold","silver","diamond"].forEach(function(m){
+    (data.subs && data.subs[m] || []).forEach(function(v){ if(DB.subs[m].indexOf(v)<0) DB.subs[m].push(v); });
+    (data.collections && data.collections[m] || []).forEach(function(v){ if(!DB.collections[m]) DB.collections[m]=[]; if(DB.collections[m].indexOf(v)<0) DB.collections[m].push(v); });
+  });
+  Object.keys(data.items||{}).forEach(function(k){
+    if(!DB.items[k]) DB.items[k]=[];
+    (data.items[k]||[]).forEach(function(v){ if(DB.items[k].indexOf(v)<0) DB.items[k].push(v); });
+  });
+  dbVersion++;
+}
+
+// Connects (or silently reconnects) one account slot and loads its data.
+// isNew=true forces the Google account picker (used when linking a brand new
+// Drive account); otherwise it first tries a cached token, then a silent
+// reconnect using the stored email as a hint, and only falls back to
+// requiring a manual tap if both of those fail.
+async function connectAccount(accId, isNew){
+  acctStatus[accId]="loading"; renderDriveStatus();
   try{
-    setDP("loading","...","Loading data...");
-    var fileId = await findDriveFile();
-    if(fileId){
-      driveFileIdCached = fileId;
-      var resp = await driveApiFetch("https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media");
-      var data = await resp.json();
-      if(data && data.entries){
-        DB = Object.assign({}, DB, data);
-        dbVersion++;
-        setDP("loading","...","Loading images...");
-        await hydrateImages(DB);
+    if(!isNew){
+      var cached=readAcctTokenCache(accId);
+      if(cached){
+        acctAuth[accId]=cached;
+        await loadOneAccountData(accId);
+        acctStatus[accId]="ok"; renderDriveStatus();
+        return true;
       }
-      toast("Data loaded from Drive","ok");
-    } else {
-      toast("No existing data - starting fresh","info");
     }
-    setDP("ok","OK","Drive synced");
-    renderSup();
-    if(document.getElementById("share-modal").classList.contains("open")) renderShareSupplierList();
-  } catch(e){
-    setDP("err","!","Load error");
-    toast("Load error: "+e.message,"err");
+    var acc=driveAccounts.find(function(a){return a.id===accId;});
+    var ok=await requestAccountToken(accId, isNew ? "select_account" : "", isNew?null:(acc&&acc.email));
+    if(!ok){ acctStatus[accId]="err"; renderDriveStatus(); return false; }
+    await loadOneAccountData(accId);
+    acctStatus[accId]="ok"; renderDriveStatus();
+    return true;
+  }catch(e){
+    console.log("connectAccount failed", accId, e);
+    acctStatus[accId]="err"; renderDriveStatus();
+    return false;
   }
+}
+
+async function loadAllAccounts(){
+  loadAccountsConfig();
+  renderDriveStatus();
+  // Sequential on purpose: GIS's token client has one shared callback, so
+  // firing requestAccessToken for several accounts at once risks a response
+  // landing on the wrong account. Accounts with an already-cached token skip
+  // GIS entirely (near-instant); only ones needing an actual silent
+  // reconnect attempt add any real delay, and there are normally very few
+  // of those in a row.
+  for(var i=0;i<driveAccounts.length;i++){
+    await connectAccount(driveAccounts[i].id, false);
+  }
+  markDriveReady();
+  setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary());
+  renderCat(); renderBr(); renderSup();
+  if(document.getElementById("share-modal") && document.getElementById("share-modal").classList.contains("open")) renderShareSupplierList();
+}
+function anyAccountOk(){ return driveAccounts.some(function(a){ return acctStatus[a.id]==="ok"; }); }
+function driveStatusSummary(){
+  var ok=driveAccounts.filter(function(a){return acctStatus[a.id]==="ok";}).length;
+  return ok+"/"+driveAccounts.length+" Drive"+(driveAccounts.length===1?"":"s")+" connected";
+}
+
+// ===== Manage Drives modal =====
+function openDrivesModal(){
+  var m=document.getElementById("drives-modal");
+  if(m) m.classList.add("open");
+  renderDriveStatus();
+}
+function closeDrivesModal(){
+  var m=document.getElementById("drives-modal");
+  if(m) m.classList.remove("open");
+}
+function acctStatusDot(id){
+  var s=acctStatus[id];
+  if(s==="ok") return '<span style="color:#1a8a3f;font-size:14px">&#9679;</span>';
+  if(s==="loading") return '<span style="color:#b8860b;font-size:14px">&#9679;</span>';
+  return '<span style="color:#c0392b;font-size:14px">&#9679;</span>';
+}
+// Updates both the small header pill (always) and the full Manage Drives
+// list (only if that modal happens to be open right now).
+function renderDriveStatus(){
+  var el=document.getElementById("dpill");
+  if(el){
+    var connecting = driveAccounts.some(function(a){return acctStatus[a.id]==="loading";});
+    if(connecting){ setDP("loading","...","Connecting..."); }
+    else if(!driveAccounts.length){ setDP("loading","...","Tap to connect"); }
+    else { setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary()); }
+  }
+  var body=document.getElementById("drivesBody");
+  var modal=document.getElementById("drives-modal");
+  if(!body || !modal || !modal.classList.contains("open")) return;
+  var mastersInfo=[{k:"gold",l:"Gold"},{k:"silver",l:"Silver"},{k:"diamond",l:"Diamond"}];
+  body.innerHTML = mastersInfo.map(function(mi){
+    var accs = driveAccounts.filter(function(a){ return a.master===mi.k || a.master===null; });
+    var rows = accs.map(function(a){
+      var active = activeByMaster[mi.k]===a.id;
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr)">'+
+        '<label style="display:flex;align-items:center;gap:6px;flex:1;font-size:12.5px;cursor:pointer">'+
+        '<input type="radio" name="active_'+mi.k+'" '+(active?"checked":"")+' onchange="setActiveAccount(\''+mi.k+'\',\''+a.id+'\')">'+
+        acctStatusDot(a.id)+' '+esc(a.label)+(a.email?' <span style="color:var(--txt3);font-size:10.5px">('+esc(a.email)+')</span>':'')+
+        '</label>'+
+        (acctStatus[a.id]!=="ok" ? '<button type="button" class="btn xs" onclick="reconnectAccount(\''+a.id+'\')">Reconnect</button>' : '')+
+        '</div>';
+    }).join("") || '<div style="font-size:12px;color:var(--txt3);padding:6px 0">No Drive connected for '+mi.l+' yet</div>';
+    return '<div style="margin-bottom:14px"><div class="slbl" style="margin-top:0">'+mi.l+'</div>'+rows+
+      '<button type="button" class="btn xs ghost" style="margin-top:6px" onclick="addNewDriveAccount(\''+mi.k+'\')">+ Add another Drive for '+mi.l+'</button></div>';
+  }).join("");
+}
+function setActiveAccount(master, accId){
+  activeByMaster[master]=accId;
+  saveAccountsConfig();
+  var acc=driveAccounts.find(function(a){return a.id===accId;});
+  toast("New "+master+" items will now save to "+(acc?acc.label:accId),"ok");
+}
+async function reconnectAccount(id){
+  var ok = await connectAccount(id, false);
+  if(!ok) ok = await connectAccount(id, true); // silent failed - fall back to a picker tap
+  renderDriveStatus(); renderCat(); renderBr(); renderSup();
+  toast(ok ? "Reconnected" : "Couldn't connect - try again", ok ? "ok" : "err");
+}
+async function addNewDriveAccount(master){
+  var suggested = master.charAt(0).toUpperCase()+master.slice(1)+"-"+(driveAccounts.filter(function(a){return a.master===master;}).length+1);
+  var label = prompt('Label for this Drive (e.g. "'+suggested+'"):', suggested);
+  if(label===null) return;
+  var id = "acc_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);
+  driveAccounts.push({id:id, label:label||suggested, master:master, email:null});
+  saveAccountsConfig();
+  renderDriveStatus();
+  toast("Opening Google sign-in - pick the account for this Drive...","info");
+  var ok = await connectAccount(id, true);
+  if(ok){
+    if(!activeByMaster[master]){ activeByMaster[master]=id; saveAccountsConfig(); }
+    toast("Connected "+(label||suggested),"ok");
+  } else {
+    toast("Connection cancelled or failed","err");
+  }
+  renderDriveStatus(); renderCat(); renderBr(); renderSup();
 }
 
 // ===== Background sync queue =====
@@ -2596,64 +2810,93 @@ function updateSyncBadge(){
   // if neither dirty nor in progress, whatever saveDr() last set (e.g. "Drive synced") stays as-is
 }
 
+// Saves every currently-connected account's own slice of the data (its
+// entries + the full shared taxonomy) back to its own Drive file. The
+// per-account JSON is small (images are external references, not inline
+// bytes) so re-writing every connected account on each sync is cheap and
+// keeps this logic simple and safe, rather than trying to track exactly
+// which account changed.
 async function saveDr(){
-  if(!gAccessToken){
+  var connected = driveAccounts.filter(function(a){ return acctAuth[a.id] && acctAuth[a.id].token; });
+  if(!connected.length){
     setDP("err","!","Tap to connect");
-    throw new Error("Not connected to Drive yet");
+    throw new Error("Not connected to any Drive yet");
   }
-  setDP("loading","...","Uploading images...");
-  try{
-    await uploadPendingImages(DB);
-    setDP("loading","...","Saving...");
-    var content = JSON.stringify(slimForDrive(DB));
-    var fileId = driveFileIdCached || await findDriveFile();
+  var anyFail=false;
+  for(var i=0;i<connected.length;i++){
+    var accId = connected[i].id;
+    try{
+      var entries = DB.entries.filter(function(e){ return e._acc===accId; });
+      setDP("loading","...","Uploading images...");
+      await uploadPendingImages(accId, entries);
+      setDP("loading","...","Saving...");
+      var payload = {entries:entries, subs:DB.subs, items:DB.items, collections:DB.collections};
+      var content = JSON.stringify(slimForDrive(payload));
+      var fileId = acctFileId[accId] || await findDriveFile(accId);
 
-    if(fileId){
-      driveFileIdCached = fileId;
-      var resp = await driveApiFetch(
-        "https://www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=media",
-        { method: "PATCH", headers: {"Content-Type": "application/json"}, body: content }
-      );
-      if(!resp.ok) throw new Error("Update failed: " + resp.status);
-    } else {
-      var boundary = "-------pricebook" + Date.now();
-      var metadata = {name: DRFILE, mimeType: "application/json"};
-      var body =
-        "--" + boundary + "\r\n" +
-        "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-        JSON.stringify(metadata) + "\r\n" +
-        "--" + boundary + "\r\n" +
-        "Content-Type: application/json\r\n\r\n" +
-        content + "\r\n" +
-        "--" + boundary + "--";
+      if(fileId){
+        acctFileId[accId]=fileId;
+        var resp = await driveApiFetch(accId,
+          "https://www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=media",
+          { method: "PATCH", headers: {"Content-Type": "application/json"}, body: content }
+        );
+        if(!resp.ok) throw new Error("Update failed: " + resp.status);
+      } else {
+        var boundary = "-------pricebook" + Date.now();
+        var metadata = {name: DRFILE, mimeType: "application/json"};
+        var body =
+          "--" + boundary + "\r\n" +
+          "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+          JSON.stringify(metadata) + "\r\n" +
+          "--" + boundary + "\r\n" +
+          "Content-Type: application/json\r\n\r\n" +
+          content + "\r\n" +
+          "--" + boundary + "--";
 
-      var resp2 = await driveApiFetch(
-        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-        {
-          method: "POST",
-          headers: {"Content-Type": "multipart/related; boundary=" + boundary},
-          body: body
-        }
-      );
-      if(!resp2.ok) throw new Error("Create failed: " + resp2.status);
-      var newFile = await resp2.json();
-      driveFileIdCached = newFile.id;
+        var resp2 = await driveApiFetch(accId,
+          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+          {
+            method: "POST",
+            headers: {"Content-Type": "multipart/related; boundary=" + boundary},
+            body: body
+          }
+        );
+        if(!resp2.ok) throw new Error("Create failed: " + resp2.status);
+        var newFile = await resp2.json();
+        acctFileId[accId] = newFile.id;
+      }
+    }catch(e){
+      console.log("save failed for account", accId, e);
+      anyFail=true;
     }
-    setDP("ok","OK","Saved to Drive");
-    toast("Saved to Google Drive","ok");
-  } catch(e){
-    setDP("err","!","Save failed - retrying");
-    throw e;
   }
+  if(anyFail){
+    setDP("err","!","Save failed - retrying");
+    throw new Error("One or more Drive accounts failed to save");
+  }
+  setDP("ok","OK", driveStatusSummary());
+  toast("Saved to Google Drive","ok");
 }
 
 async function initDrive(){
-  setDP("loading","...","Tap to connect");
-  initGoogleAuth();
+  setDP("loading","...","Connecting...");
+  await loadAllAccounts();
 }
 
+// Manual "reconnect everything" - tries every configured account again,
+// forcing the picker for any that don't have a usable token at all yet.
 async function syncDrive(){
-  connectDrive();
+  setDP("loading","...","Connecting...");
+  for(var i=0;i<driveAccounts.length;i++){
+    var acc = driveAccounts[i];
+    if(acctAuth[acc.id] && acctAuth[acc.id].token){
+      try{ await loadOneAccountData(acc.id); acctStatus[acc.id]="ok"; }catch(e){ acctStatus[acc.id]="err"; }
+    } else {
+      await connectAccount(acc.id, false);
+    }
+  }
+  setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary());
+  renderDriveStatus(); renderCat(); renderBr(); renderSup();
 }
 
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
@@ -2948,6 +3191,9 @@ async function saveShareMedia(){
     }
   }
 
+  var accId = activeByMaster[shareMaster];
+  if(!accId){ toast("No Drive connected for "+shareMaster+" yet - connect one in Manage Drives","err"); return; }
+
   var btn = document.getElementById("shSaveBtn");
   btn.disabled = true; btn.style.opacity = "0.6";
   try{
@@ -2959,12 +3205,13 @@ async function saveShareMedia(){
     if(!images.length){ toast("Couldn't read the shared media","err"); return; }
 
     var entry = (DB.entries||[]).find(function(e){
+      if(e._acc !== accId) return false; // same master's Drive account only
       var sup = e.supplier||{};
       var n = sup.firm || ((sup.contacts||[])[0]||{}).name || "";
       return n.trim().toLowerCase() === supName.toLowerCase();
     });
     if(!entry){
-      entry = {id:String(Date.now()), supplier:{firm:supName, contacts:[], phones:[], address:"", notes:"", stars:0, photos:[], cardImages:[]}, items:[], savedAt:new Date().toISOString()};
+      entry = {id:String(Date.now())+"_"+shareMaster, supplier:{firm:supName, contacts:[], phones:[], address:"", notes:"", stars:0, photos:[], cardImages:[]}, items:[], savedAt:new Date().toISOString(), _acc:accId};
       DB.entries.push(entry);
     }
     var item = (entry.items||[]).find(function(it){
