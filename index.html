@@ -494,6 +494,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       <div style="display:flex;gap:6px">
         <button class="btn xs" onclick="clearCatSelection()">Clear</button>
         <button class="btn wa xs" onclick="shareSelectedWA()">WA Share Selected</button>
+        <button class="btn xs dan" onclick="deleteSelectedCat()">Delete Selected</button>
       </div>
     </div>
     <div id="catbody"></div>
@@ -558,7 +559,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <button class="btn wa sm" onclick="waShareCur()">&#128247; Share Image</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="toggleInfo()">&#128203; Details</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="dlCur()">Save</button>
+    <button class="btn sm dan" onclick="deleteCurImg()">&#128465; Delete</button>
   </div>
+</div>
+
+<!-- Undo bar - shown briefly after a delete so it can be reversed before it's
+     actually persisted/synced. -->
+<div id="undobar" style="display:none;position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 14px;border-radius:10px;z-index:10000;font-size:13px;align-items:center;gap:12px;box-shadow:0 4px 14px rgba(0,0,0,0.35)">
+  <span id="undobarMsg">Deleted</span>
+  <button type="button" onclick="undoDelete()" style="background:none;border:none;color:#7cb8ff;font-weight:700;font-size:13px;cursor:pointer">UNDO</button>
 </div>
 
 <div class="mbg" id="lnkmbg">
@@ -1807,8 +1816,33 @@ function buildCatData(){
   return out;
 }
 
+// ===== Lazy-loaded Catalogue media =====
+// Catalogue can hold thousands of photos/videos. Building an <img>/<video>
+// with its full data URL up front for every single one at once is what
+// actually gets slow (DOM size + decode cost), not the JSON itself. Instead
+// each card is created with an empty element and its data URL stashed in
+// data-src; a single shared IntersectionObserver assigns the real src only
+// once a card scrolls near the viewport, so the browser only ever has to
+// decode what's actually about to be seen.
+var _catImgObserver = null;
+function getCatImgObserver(){
+  if(_catImgObserver) return _catImgObserver;
+  _catImgObserver = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){
+        var el = en.target;
+        if(el.dataset && el.dataset.src){ el.src = el.dataset.src; delete el.dataset.src; }
+        _catImgObserver.unobserve(el);
+      }
+    });
+  }, {rootMargin:"600px 0px"}); // start loading ~600px before it actually enters view, so scrolling feels seamless
+  return _catImgObserver;
+}
+function lazyObserve(el){ getCatImgObserver().observe(el); }
+
 function renderCat(){
   liCatCollections();
+  if(_catImgObserver) _catImgObserver.disconnect(); // drop observations from the old DOM before rebuilding it
   var tree=buildCatData();
   var body=document.getElementById("catbody");
   if(!Object.keys(tree).length){
@@ -1885,16 +1919,20 @@ function renderCat(){
 
         if(img.mediaType==="video"){
           var vidEl=document.createElement("video");
-          vidEl.src=img.src;vidEl.muted=true;vidEl.playsInline=true;vidEl.preload="metadata";
+          vidEl.muted=true;vidEl.playsInline=true;vidEl.preload="metadata";
+          vidEl.dataset.src=img.src;
           card.appendChild(vidEl);
+          lazyObserve(vidEl);
           var playIcon=document.createElement("div");
           playIcon.className="vidplayicon";
           playIcon.innerHTML="&#9654;";
           card.appendChild(playIcon);
         } else {
           var imgEl=document.createElement("img");
-          imgEl.src=img.src;imgEl.loading="lazy";
+          imgEl.loading="lazy";
+          imgEl.dataset.src=img.src;
           card.appendChild(imgEl);
+          lazyObserve(imgEl);
         }
 
         var st=img.stars||0;
@@ -1920,7 +1958,7 @@ function renderCat(){
           card.appendChild(colTag);
         }
 
-        var selKey = img.entryId+"_"+img.itemIdx+"_"+img.imgIdx;
+        var selKey = img.entryId+"|||"+img.itemIdx+"|||"+img.imgIdx;
         if(catSelecting){
           var chk=document.createElement("div");
           chk.className="selchk"+(catSelected[selKey]?" on":"");
@@ -2066,6 +2104,97 @@ function saveInfoEdit(){
   toggleInfo(); toggleInfo(); // re-render the panel in read-only mode with the new values
   var brres=document.getElementById("brres");
   if(brres) renderBr(); // keep Browse in sync if that's where the edit was triggered from
+}
+
+// ===== Delete with Undo =====
+// A brief "UNDO" bar shows after every delete, single or bulk. Nothing is
+// actually persisted to Drive until that window passes without being
+// undone - so a mis-tap is always recoverable in the moment, on top of the
+// PricebookBackups safety net for anything that does get synced.
+var _undoTimer=null, _undoAction=null;
+function showUndoBar(msg, undoFn){
+  clearTimeout(_undoTimer);
+  _undoAction = undoFn;
+  var bar=document.getElementById("undobar");
+  document.getElementById("undobarMsg").textContent=msg;
+  bar.style.display="flex";
+  _undoTimer = setTimeout(function(){
+    bar.style.display="none";
+    _undoAction=null;
+    queueSync(); // undo window passed - now actually persist the deletion(s)
+  }, 6000);
+}
+function undoDelete(){
+  clearTimeout(_undoTimer);
+  document.getElementById("undobar").style.display="none";
+  if(_undoAction){ _undoAction(); _undoAction=null; }
+  toast("Restored","ok");
+}
+
+// Deletes just the photo/video currently open in the lightbox. Diamond
+// grade sub-images aren't deletable from here yet (their exact position
+// isn't tracked in the lightbox metadata the same way regular item photos
+// are) - handled safely by declining rather than guessing.
+function deleteCurImg(){
+  var meta=lbMeta[lbIdx];
+  if(!meta || meta.entryId===undefined){ toast("Can't delete this image","err"); return; }
+  if(meta.isGrade){ toast("Deleting diamond grade photos isn't supported here yet","err"); return; }
+  var e=DB.entries.find(function(x){return x.id===meta.entryId;});
+  if(!e || !e.items[meta.itemIdx] || !e.items[meta.itemIdx].images){ toast("Couldn't find that saved item","err"); return; }
+  var arr=e.items[meta.itemIdx].images;
+  var idx=meta.imgIdx;
+  if(idx===undefined || !arr[idx]){ toast("Image not found","err"); return; }
+  var removed=arr.splice(idx,1)[0];
+  dbVersion++;
+  closeLB();
+  renderCat();
+  var brres=document.getElementById("brres"); if(brres) renderBr();
+  showUndoBar("Photo deleted", function(){
+    arr.splice(idx,0,removed);
+    dbVersion++;
+    renderCat();
+    var brres2=document.getElementById("brres"); if(brres2) renderBr();
+  });
+}
+
+// Deletes every currently multi-selected photo/video in Catalogue at once
+// (see the "Select" toggle). Confirms first since there's no per-item undo
+// once the bulk action runs - only the whole batch, via the same undo bar.
+function deleteSelectedCat(){
+  var keys=Object.keys(catSelected);
+  if(!keys.length){ toast("Select at least one photo/video first","err"); return; }
+  if(!confirm("Delete "+keys.length+" selected photo(s)/video(s)? You'll have a few seconds to undo.")) return;
+  var removedList=[]; // [{arr, idx, obj}] in descending idx order per array so splicing back is safe
+  var byEntryItem={};
+  keys.forEach(function(k){
+    var parts=k.split("|||");
+    var entryId=parts[0], itemIdx=parseInt(parts[1],10), imgIdx=parseInt(parts[2],10);
+    var e=DB.entries.find(function(x){return x.id===entryId;});
+    if(!e || !e.items[itemIdx] || !e.items[itemIdx].images) return;
+    var arr=e.items[itemIdx].images;
+    var gk=entryId+"_"+itemIdx;
+    if(!byEntryItem[gk]) byEntryItem[gk]={arr:arr, idxs:[]};
+    byEntryItem[gk].idxs.push(imgIdx);
+  });
+  Object.keys(byEntryItem).forEach(function(gk){
+    var arr=byEntryItem[gk].arr;
+    var idxs=byEntryItem[gk].idxs.sort(function(a,b){return b-a;}); // remove highest index first so lower ones stay valid
+    idxs.forEach(function(idx){
+      if(arr[idx]) removedList.push({arr:arr, idx:idx, obj:arr.splice(idx,1)[0]});
+    });
+  });
+  dbVersion++;
+  catSelected={};
+  toggleCatSelectMode(); // exit select mode and re-render
+  toast("Deleted "+removedList.length+" item(s)","ok");
+  showUndoBar("Deleted "+removedList.length+" item(s)", function(){
+    // re-insert lowest indices first so earlier splices don't shift later ones
+    removedList.slice().sort(function(a,b){return a.idx-b.idx;}).forEach(function(r){
+      r.arr.splice(r.idx,0,r.obj);
+    });
+    dbVersion++;
+    renderCat();
+  });
 }
 
 // Jump straight into editing a specific saved item from the Browse tab -
@@ -2258,6 +2387,12 @@ var acctAuth={};                               // accId -> {token,exp}
 var acctFileId={};                             // accId -> DRFILE's Drive fileId (cache)
 var acctImgFolder={};                          // accId -> PricebookImages folder id (cache)
 var acctStatus={};                             // accId -> "idle"|"loading"|"ok"|"err"
+var acctBackupFolder={};                       // accId -> PricebookBackups folder id (cache)
+var acctFileModTime={};                        // accId -> last known-good Drive modifiedTime (baseline for conflict checks)
+var acctConflict={};                           // accId -> true if another device saved since we last loaded - needs manual resolve
+var acctLastSavedContent={};                   // accId -> last JSON string successfully written (skip redundant re-saves/backups)
+var acctLastSynced={};                         // accId -> Date.now() of last successful save or load
+var BACKUP_FOLDER_NAME="PricebookBackups", MAX_BACKUPS_PER_ACCOUNT=10;
 var _pendingConnectId=null;
 
 function loadAccountsConfig(){
@@ -2582,13 +2717,69 @@ async function driveApiFetch(accId, url, options){
 async function findDriveFile(accId){
   if(acctFileId[accId]) return acctFileId[accId];
   var q = encodeURIComponent("name='" + DRFILE + "' and trashed=false");
-  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name)");
+  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name,modifiedTime)");
   var data = await resp.json();
   if(data.files && data.files.length > 0){
     acctFileId[accId]=data.files[0].id;
+    // First time we see this file in the session becomes our "last known
+    // good" baseline for conflict detection - any change to this timestamp
+    // between now and our next save means another device saved in between.
+    acctFileModTime[accId]=data.files[0].modifiedTime;
     return acctFileId[accId];
   }
   return null;
+}
+
+async function getFileModTime(accId, fileId){
+  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/"+fileId+"?fields=modifiedTime");
+  var data = await resp.json();
+  return data.modifiedTime;
+}
+
+async function getBackupFolder(accId){
+  if(acctBackupFolder[accId]) return acctBackupFolder[accId];
+  var q = encodeURIComponent("name='"+BACKUP_FOLDER_NAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id,name)");
+  var data = await resp.json();
+  if(data.files && data.files.length){ acctBackupFolder[accId]=data.files[0].id; return acctBackupFolder[accId]; }
+  var resp2 = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name:BACKUP_FOLDER_NAME, mimeType:"application/vnd.google-apps.folder"})
+  });
+  var nf = await resp2.json();
+  acctBackupFolder[accId]=nf.id;
+  return acctBackupFolder[accId];
+}
+
+// Makes a fast server-side copy of the current catalog file into
+// PricebookBackups right before we overwrite it, so a bad sync, accidental
+// bulk delete, or anything else can always be recovered by hand from Drive.
+// Never blocks or fails the actual save - a backup hiccup is logged and
+// ignored rather than losing the real write.
+async function backupBeforeSave(accId, fileId){
+  try{
+    var folderId = await getBackupFolder(accId);
+    var stamp = new Date().toISOString().replace(/[:.]/g,"-");
+    await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/"+fileId+"/copy", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name:"backup_"+stamp+".json", parents:[folderId]})
+    });
+    pruneOldBackups(accId, folderId); // fire and forget - doesn't need to block the save
+  }catch(e){ console.log("backup failed (non-fatal):", accId, e); }
+}
+async function pruneOldBackups(accId, folderId){
+  try{
+    var q = encodeURIComponent("'"+folderId+"' in parents and trashed=false");
+    var resp = await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files?q="+q+"&fields=files(id,createdTime)&orderBy=createdTime desc&pageSize=100");
+    var data = await resp.json();
+    var files = data.files || [];
+    if(files.length > MAX_BACKUPS_PER_ACCOUNT){
+      var toDelete = files.slice(MAX_BACKUPS_PER_ACCOUNT);
+      for(var i=0;i<toDelete.length;i++){
+        await driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/"+toDelete[i].id, {method:"DELETE"}).catch(function(){});
+      }
+    }
+  }catch(e){ console.log("prune failed (non-fatal):", accId, e); }
 }
 
 // Loads one account's catalog file, tags every entry with which account it
@@ -2619,6 +2810,10 @@ async function loadOneAccountData(accId){
     (data.items[k]||[]).forEach(function(v){ if(DB.items[k].indexOf(v)<0) DB.items[k].push(v); });
   });
   dbVersion++;
+  acctConflict[accId]=false;
+  acctLastSynced[accId]=Date.now();
+  var freshSlice = DB.entries.filter(function(e){ return e._acc===accId; });
+  acctLastSavedContent[accId] = JSON.stringify(slimForDrive({entries:freshSlice, subs:DB.subs, items:DB.items, collections:DB.collections}));
 }
 
 // Connects (or silently reconnects) one account slot and loads its data.
@@ -2692,11 +2887,22 @@ function acctStatusDot(id){
 }
 // Updates both the small header pill (always) and the full Manage Drives
 // list (only if that modal happens to be open right now).
+function timeAgo(ms){
+  if(!ms) return "never";
+  var s=Math.floor((Date.now()-ms)/1000);
+  if(s<60) return "just now";
+  var m=Math.floor(s/60); if(m<60) return m+"m ago";
+  var h=Math.floor(m/60); if(h<24) return h+"h ago";
+  return Math.floor(h/24)+"d ago";
+}
+function anyAccountConflict(){ return driveAccounts.some(function(a){ return acctConflict[a.id]; }); }
+
 function renderDriveStatus(){
   var el=document.getElementById("dpill");
   if(el){
     var connecting = driveAccounts.some(function(a){return acctStatus[a.id]==="loading";});
-    if(connecting){ setDP("loading","...","Connecting..."); }
+    if(anyAccountConflict()){ setDP("err","!","Conflict - tap to resolve"); }
+    else if(connecting){ setDP("loading","...","Connecting..."); }
     else if(!driveAccounts.length){ setDP("loading","...","Tap to connect"); }
     else { setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary()); }
   }
@@ -2708,17 +2914,52 @@ function renderDriveStatus(){
     var accs = driveAccounts.filter(function(a){ return a.master===mi.k || a.master===null; });
     var rows = accs.map(function(a){
       var active = activeByMaster[mi.k]===a.id;
-      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bdr)">'+
+      var conflictBanner = acctConflict[a.id] ? (
+        '<div style="background:#fdecea;border:1px solid #e6a49a;border-radius:7px;padding:7px 9px;margin:4px 0 8px;font-size:11.5px;color:#7a2e22">'+
+        '&#9888; This Drive changed elsewhere since last load - pick which version to keep:'+
+        '<div style="display:flex;gap:6px;margin-top:6px">'+
+        '<button type="button" class="btn xs" onclick="resolveConflictUseTheirs(\''+a.id+'\')">Use the Drive version</button>'+
+        '<button type="button" class="btn xs pri" onclick="resolveConflictKeepMine(\''+a.id+'\')">Keep my version</button>'+
+        '</div></div>'
+      ) : "";
+      return '<div style="padding:7px 0;border-bottom:1px solid var(--bdr)">'+
+        '<div style="display:flex;align-items:center;gap:8px">'+
         '<label style="display:flex;align-items:center;gap:6px;flex:1;font-size:12.5px;cursor:pointer">'+
         '<input type="radio" name="active_'+mi.k+'" '+(active?"checked":"")+' onchange="setActiveAccount(\''+mi.k+'\',\''+a.id+'\')">'+
         acctStatusDot(a.id)+' '+esc(a.label)+(a.email?' <span style="color:var(--txt3);font-size:10.5px">('+esc(a.email)+')</span>':'')+
         '</label>'+
         (acctStatus[a.id]!=="ok" ? '<button type="button" class="btn xs" onclick="reconnectAccount(\''+a.id+'\')">Reconnect</button>' : '')+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--txt3);margin-left:24px">Last synced: '+timeAgo(acctLastSynced[a.id])+'</div>'+
+        conflictBanner+
         '</div>';
     }).join("") || '<div style="font-size:12px;color:var(--txt3);padding:6px 0">No Drive connected for '+mi.l+' yet</div>';
     return '<div style="margin-bottom:14px"><div class="slbl" style="margin-top:0">'+mi.l+'</div>'+rows+
       '<button type="button" class="btn xs ghost" style="margin-top:6px" onclick="addNewDriveAccount(\''+mi.k+'\')">+ Add another Drive for '+mi.l+'</button></div>';
   }).join("");
+}
+// ===== Conflict resolution =====
+// "Use theirs" reloads the account's data fresh from Drive, discarding any
+// local unsaved changes for just that one account's entries (other accounts
+// are untouched since data is tagged per-account). "Keep mine" clears the
+// conflict flag and lets the next sync overwrite Drive with what's on this
+// device - the pre-overwrite backup copy is still made either way, so the
+// version that gets discarded is always recoverable by hand from Drive.
+async function resolveConflictUseTheirs(accId){
+  toast("Reloading the latest version from Drive...","info");
+  try{
+    await loadOneAccountData(accId);
+    renderDriveStatus(); renderCat(); renderBr(); renderSup();
+    toast("Loaded the latest version - your local changes for this Drive were discarded","ok");
+  }catch(e){
+    toast("Couldn't reload - try again","err");
+  }
+}
+function resolveConflictKeepMine(accId){
+  acctConflict[accId]=false;
+  renderDriveStatus();
+  toast("Keeping your version - saving now...","info");
+  queueSync();
 }
 function setActiveAccount(master, accId){
   activeByMaster[master]=accId;
@@ -2816,31 +3057,70 @@ function updateSyncBadge(){
 // bytes) so re-writing every connected account on each sync is cheap and
 // keeps this logic simple and safe, rather than trying to track exactly
 // which account changed.
+// Saves every currently-connected account's own slice of the data (its
+// entries + the full shared taxonomy) back to its own Drive file. The
+// per-account JSON is small (images are external references, not inline
+// bytes) so re-checking every connected account on each sync is cheap.
+//
+// Data-safety measures on every real write:
+//  - Skips the network entirely if nothing changed since the last successful
+//    save for that account (avoids spamming Drive during retries/backoff).
+//  - Detects if another device saved to this same Drive file since we last
+//    loaded it, and stops rather than silently overwriting - see
+//    acctConflict / the Manage Drives conflict banner for resolution.
+//  - Makes a timestamped backup copy of the previous version before every
+//    overwrite (kept in a PricebookBackups folder, oldest pruned beyond 10).
 async function saveDr(){
   var connected = driveAccounts.filter(function(a){ return acctAuth[a.id] && acctAuth[a.id].token; });
   if(!connected.length){
     setDP("err","!","Tap to connect");
     throw new Error("Not connected to any Drive yet");
   }
-  var anyFail=false;
+  var anyFail=false, anyConflict=false;
   for(var i=0;i<connected.length;i++){
     var accId = connected[i].id;
     try{
       var entries = DB.entries.filter(function(e){ return e._acc===accId; });
-      setDP("loading","...","Uploading images...");
-      await uploadPendingImages(accId, entries);
-      setDP("loading","...","Saving...");
       var payload = {entries:entries, subs:DB.subs, items:DB.items, collections:DB.collections};
       var content = JSON.stringify(slimForDrive(payload));
+
+      if(acctConflict[accId]){
+        // Waiting on the user to resolve this in Manage Drives - don't touch Drive.
+        anyConflict=true; anyFail=true;
+        continue;
+      }
+      if(acctLastSavedContent[accId] === content){
+        continue; // nothing changed for this account since the last successful save
+      }
+
+      setDP("loading","...","Uploading images...");
+      await uploadPendingImages(accId, entries);
+      // Images just uploaded gained .driveId refs, which changes the slim content - rebuild it.
+      content = JSON.stringify(slimForDrive({entries:entries, subs:DB.subs, items:DB.items, collections:DB.collections}));
+
       var fileId = acctFileId[accId] || await findDriveFile(accId);
 
       if(fileId){
         acctFileId[accId]=fileId;
+        var remoteModTime=null;
+        try{ remoteModTime = await getFileModTime(accId, fileId); }catch(e){ /* offline etc - fall through, treat as no conflict info available */ }
+        if(remoteModTime && acctFileModTime[accId] && remoteModTime !== acctFileModTime[accId]){
+          acctConflict[accId]=true; anyConflict=true; anyFail=true;
+          renderDriveStatus();
+          continue;
+        }
+
+        setDP("loading","...","Backing up...");
+        await backupBeforeSave(accId, fileId);
+
+        setDP("loading","...","Saving...");
         var resp = await driveApiFetch(accId,
-          "https://www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=media",
+          "https://www.googleapis.com/upload/drive/v3/files/" + fileId + "?uploadType=media&fields=modifiedTime",
           { method: "PATCH", headers: {"Content-Type": "application/json"}, body: content }
         );
         if(!resp.ok) throw new Error("Update failed: " + resp.status);
+        var updated = await resp.json();
+        acctFileModTime[accId] = updated.modifiedTime;
       } else {
         var boundary = "-------pricebook" + Date.now();
         var metadata = {name: DRFILE, mimeType: "application/json"};
@@ -2854,7 +3134,7 @@ async function saveDr(){
           "--" + boundary + "--";
 
         var resp2 = await driveApiFetch(accId,
-          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime",
           {
             method: "POST",
             headers: {"Content-Type": "multipart/related; boundary=" + boundary},
@@ -2864,11 +3144,19 @@ async function saveDr(){
         if(!resp2.ok) throw new Error("Create failed: " + resp2.status);
         var newFile = await resp2.json();
         acctFileId[accId] = newFile.id;
+        acctFileModTime[accId] = newFile.modifiedTime;
       }
+      acctLastSavedContent[accId]=content;
+      acctLastSynced[accId]=Date.now();
     }catch(e){
       console.log("save failed for account", accId, e);
       anyFail=true;
     }
+  }
+  if(anyConflict){
+    setDP("err","!","Conflict - tap to resolve");
+    renderDriveStatus();
+    throw new Error("A Drive account has a sync conflict that needs resolving in Manage Drives");
   }
   if(anyFail){
     setDP("err","!","Save failed - retrying");
