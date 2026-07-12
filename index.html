@@ -1468,6 +1468,74 @@ function addGPhs(e,iid,gi){var gk=iid+"_"+gi;if(!gPhs[gk])gPhs[gk]=[];Array.from
 
 function colSup(){var cs=[],ps=[];document.querySelectorAll("#cwrap .cr").forEach(function(r){var n=r.querySelector(".cn").value.trim();var ro=r.querySelector(".cro").value.trim();if(n)cs.push({name:n,role:ro});});document.querySelectorAll("#pwrap .pr").forEach(function(r){var n=r.querySelector(".pn").value.trim();var t=r.querySelector(".pt").value;var custom=r.querySelector(".pto");if(t==="other"&&custom&&custom.value.trim())t=custom.value.trim();if(n)ps.push({type:t,number:n});});return{firm:document.getElementById("sfirm").value.trim(),contacts:cs,phones:ps,address:document.getElementById("saddr").value.trim(),notes:document.getElementById("snotes").value.trim(),stars:supSV,photos:[].concat(shopPhs),cardImages:[sides.front&&sides.front.src,sides.back&&sides.back.src].filter(Boolean)};}
 
+// ===== Supplier draft autosave =====
+// Android (especially aggressive-battery-management phones like OnePlus,
+// Xiaomi, Vivo/Oppo) can kill this app's background process the instant
+// something like the native Contact Picker takes over the screen, then
+// relaunch it fresh when you come back - which wipes any unsaved typing.
+// This quietly snapshots the supplier text fields (name/contacts/phones/
+// address/notes) to localStorage as you type, and offers to restore them
+// if the app ever reloads with unsaved work still sitting in that snapshot.
+// Photos aren't included here - they can be several MB each and would risk
+// overflowing localStorage's much smaller quota; the text fields are both
+// the cheapest to protect and the part most likely to get lost by a crash
+// happening mid contact-import.
+var ADD_DRAFT_KEY="pb_add_draft";
+var _draftSaveTimer=null;
+function scheduleDraftSave(){
+  clearTimeout(_draftSaveTimer);
+  _draftSaveTimer=setTimeout(saveAddDraft, 800);
+}
+function saveAddDraft(){
+  try{
+    var sup=colSup();
+    if(!sup.firm && !sup.contacts.length && !sup.phones.length && !sup.address && !sup.notes){
+      localStorage.removeItem(ADD_DRAFT_KEY);
+      return;
+    }
+    localStorage.setItem(ADD_DRAFT_KEY, JSON.stringify({firm:sup.firm, contacts:sup.contacts, phones:sup.phones, address:sup.address, notes:sup.notes, savedAt:Date.now()}));
+  }catch(e){}
+}
+function clearAddDraft(){ try{ localStorage.removeItem(ADD_DRAFT_KEY); }catch(e){} }
+function checkForAddDraft(){
+  try{
+    var raw=localStorage.getItem(ADD_DRAFT_KEY);
+    if(!raw) return;
+    var draft=JSON.parse(raw);
+    var hasContent = draft && (draft.firm || (draft.contacts&&draft.contacts.length) || (draft.phones&&draft.phones.length) || draft.address || draft.notes);
+    if(!hasContent){ clearAddDraft(); return; }
+    var ageMin=Math.round((Date.now()-(draft.savedAt||0))/60000);
+    if(confirm("Found unsaved supplier details from "+(ageMin<1?"just now":ageMin+"m ago")+" (looks like the app closed before you saved). Restore them?")){
+      restoreAddDraft(draft);
+    } else {
+      clearAddDraft();
+    }
+  }catch(e){}
+}
+function restoreAddDraft(draft){
+  document.getElementById("sfirm").value=draft.firm||"";
+  document.getElementById("saddr").value=draft.address||"";
+  document.getElementById("snotes").value=draft.notes||"";
+  (draft.contacts||[]).forEach(function(c){
+    addCR();
+    var rows=document.querySelectorAll("#cwrap .cr");
+    var last=rows[rows.length-1];
+    last.querySelector(".cn").value=c.name||"";
+    last.querySelector(".cro").value=c.role||"";
+  });
+  (draft.phones||[]).forEach(function(p){
+    addPR();
+    var rows=document.querySelectorAll("#pwrap .pr");
+    var last=rows[rows.length-1];
+    var sel=last.querySelector(".pt");
+    var isStandard=["mobile","whatsapp","office"].indexOf(p.type)>=0;
+    sel.value = isStandard ? p.type : "other";
+    if(!isStandard){ var custom=last.querySelector(".pto"); custom.style.display="block"; custom.value=p.type; }
+    last.querySelector(".pn").value=p.number||"";
+  });
+  toast("Draft restored","ok");
+}
+
 // ===== Android Contacts integration =====
 // Import: uses Chrome's Contact Picker API (Android Chrome only - no write
 // access exists for web apps, so this is read-only by design on Google's part).
@@ -1643,6 +1711,7 @@ async function saveAll(){
   }
 }
 function clearAll(){
+  clearAddDraft();
   supSV=0;shopPhs=[];sides={front:null,back:null};
   ic=0;crC=0;prC=0;iPhs={};iStars={};iVer={};gCnt={};gPhs={};qImgs={};qStars={};
   ["sfirm","saddr","snotes"].forEach(function(id){var el=document.getElementById(id);if(el)el.value="";});
@@ -3525,6 +3594,12 @@ async function saveShareMedia(){
 
 window.addEventListener("DOMContentLoaded", function(){
   setTimeout(maybeOpenShareScreen, 400);
+  setTimeout(checkForAddDraft, 500);
+  var addPage=document.getElementById("pg-add");
+  if(addPage){
+    addPage.addEventListener("input", scheduleDraftSave);
+    addPage.addEventListener("change", scheduleDraftSave);
+  }
 });
 
 // Register the service worker once. (Previously this unregistered every SW and
