@@ -3109,6 +3109,7 @@ function renderDriveStatus(){
         acctStatusDot(a.id)+' '+esc(a.label)+(a.email?' <span style="color:var(--txt3);font-size:10.5px">('+esc(a.email)+')</span>':'')+
         '</label>'+
         (acctStatus[a.id]!=="ok" ? '<button type="button" class="btn xs" onclick="reconnectAccount(\''+a.id+'\')">Reconnect</button>' : '')+
+        '<button type="button" class="btn xs dan" onclick="removeDriveAccount(\''+a.id+'\')" title="Remove this Drive from the app">Remove</button>'+
         '</div>'+
         '<div style="font-size:10px;color:var(--txt3);margin-left:24px">Last synced: '+timeAgo(acctLastSynced[a.id])+'</div>'+
         conflictBanner+
@@ -3141,6 +3142,35 @@ function resolveConflictKeepMine(accId){
   toast("Keeping your version - saving now...","info");
   queueSync();
 }
+// Unlinks a Drive account from the app entirely - e.g. to clean up a
+// duplicate created by retrying a connect that actually succeeded the first
+// time. This only removes the app's reference to it; nothing is deleted
+// from the actual Google Drive. If the account is currently holding saved
+// entries (i.e. it's not just an empty duplicate), this warns clearly
+// first, since after removal those entries won't be loaded again unless
+// this same account is re-added later.
+function removeDriveAccount(accId){
+  var acc=driveAccounts.find(function(a){return a.id===accId;});
+  if(!acc) return;
+  var entryCount = DB.entries.filter(function(e){return e._acc===accId;}).length;
+  var msg = entryCount
+    ? "\""+acc.label+"\" has "+entryCount+" saved item(s) on it. Removing it here only unlinks it from the app - nothing is deleted from that Google Drive - but you won't see those items here anymore unless you reconnect this same account later. Remove it anyway?"
+    : "Remove \""+acc.label+"\"? (It has no saved items on it - safe to remove, e.g. if this was an accidental duplicate.)";
+  if(!confirm(msg)) return;
+
+  driveAccounts = driveAccounts.filter(function(a){ return a.id!==accId; });
+  MASTER_KEYS.forEach(function(m){ if(activeByMaster[m]===accId) activeByMaster[m]=null; });
+  saveAccountsConfig();
+  clearAcctToken(accId);
+  delete acctAuth[accId]; delete acctStatus[accId]; delete acctFileId[accId];
+  delete acctImgFolder[accId]; delete acctBackupFolder[accId]; delete acctFileModTime[accId];
+  delete acctConflict[accId]; delete acctLastSavedContent[accId]; delete acctLastSynced[accId];
+  // Entries tagged to the removed account stay in memory for this session
+  // (nothing is force-deleted), but won't be re-loaded on the next app open
+  // since there's no account left to load them from.
+  renderDriveStatus(); renderCat(); renderBr(); renderSup();
+  toast("Removed "+acc.label,"ok");
+}
 function setActiveAccount(master, accId){
   activeByMaster[master]=accId;
   saveAccountsConfig();
@@ -3167,7 +3197,12 @@ async function addNewDriveAccount(master){
     if(!activeByMaster[master]){ activeByMaster[master]=id; saveAccountsConfig(); }
     toast("Connected "+(label||suggested),"ok");
   } else {
-    toast("Connection cancelled or failed","err");
+    // Never actually connected - remove the draft entry rather than leaving
+    // a dead duplicate sitting in the list (this is exactly what used to
+    // cause "why do I have 2 Gemstone drives" after retrying a failed sign-in).
+    driveAccounts = driveAccounts.filter(function(a){ return a.id!==id; });
+    saveAccountsConfig();
+    toast("Connection cancelled or failed - nothing was added","err");
   }
   renderDriveStatus(); renderCat(); renderBr(); renderSup();
 }
