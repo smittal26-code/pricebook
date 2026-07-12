@@ -18,6 +18,8 @@
   --gold:#B5A04A;--gold-l:#FFF9E6;--gold-d:#7A6A1A;--gold-m:#9A8538;
   --sil:#8888AA;--sil-l:#F0F0F5;--sil-d:#444466;
   --dia:#5588CC;--dia-l:#EEF5FF;--dia-d:#223366;
+  --gem:#3F9E6E;--gem-l:#EAFBF2;--gem-d:#1F6B45;
+  --oth:#8A6FB0;--oth-l:#F3EEFA;--oth-d:#5A4380;
   --green:#3B6D11;--green-bg:#EAF3DE;--green-b:#C0DD97;
   --red:#A32D2D;--red-bg:#FCEBEB;--red-b:#F7C1C1;
   --blue:#0C447C;--blue-bg:#E6F1FB;--blue-b:#85B7EB;
@@ -50,6 +52,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .mtab.ag{background:var(--gold-l);border-color:var(--gold);color:var(--gold-d)}
 .mtab.as{background:var(--sil-l);border-color:var(--sil);color:var(--sil-d)}
 .mtab.ad{background:var(--dia-l);border-color:var(--dia);color:var(--dia-d)}
+.mtab.agm{background:var(--gem-l);border-color:var(--gem);color:var(--gem-d)}
+.mtab.aot{background:var(--oth-l);border-color:var(--oth);color:var(--oth-d)}
 .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px;margin-bottom:8px}
 .fg{display:flex;flex-direction:column;gap:3px}
 .fg label{font-size:11px;color:var(--txt3);font-weight:500}
@@ -80,6 +84,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .badge.gold{background:var(--gold-l);color:var(--gold-d);border-color:var(--gold)}
 .badge.silver{background:var(--sil-l);color:var(--sil-d);border-color:var(--sil)}
 .badge.diamond{background:var(--dia-l);color:var(--dia-d);border-color:var(--dia)}
+.badge.gemstone{background:var(--gem-l);color:var(--gem-d);border-color:var(--gem)}
+.badge.other{background:var(--oth-l);color:var(--oth-d);border-color:var(--oth)}
 .badge.ver{background:var(--green-bg);color:var(--green);border-color:var(--green-b)}
 .phbadge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;border:1px solid}
 .ph-mob{background:var(--green-bg);color:var(--green);border-color:var(--green-b)}
@@ -117,6 +123,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .iblock.g{border-left:3px solid var(--gold)}
 .iblock.s{border-left:3px solid var(--sil)}
 .iblock.d{border-left:3px solid var(--dia)}
+.iblock.gm{border-left:3px solid var(--gem)}
+.iblock.ot{border-left:3px solid var(--oth)}
 .ihead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:5px}
 .inum{font-size:11px;font-weight:700;color:var(--txt3);background:var(--sur);padding:3px 8px;border-radius:20px;border:1px solid var(--bdr)}
 .mseg{display:flex;border:1px solid var(--bdr);border-radius:var(--rsm);overflow:hidden}
@@ -125,6 +133,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .mseg button.ag{background:var(--gold-l);color:var(--gold-d)}
 .mseg button.as{background:var(--sil-l);color:var(--sil-d)}
 .mseg button.ad{background:var(--dia-l);color:var(--dia-d)}
+.mseg button.agm{background:var(--gem-l);color:var(--gem-d)}
+.mseg button.aot{background:var(--oth-l);color:var(--oth-d)}
 .gblock{border:1px solid var(--bdr);border-radius:var(--rsm);padding:9px;margin-bottom:7px;background:var(--sur)}
 .cr{display:grid;grid-template-columns:1fr 1fr auto;gap:7px;align-items:end;margin-bottom:7px}
 .pr{display:grid;grid-template-columns:100px 1fr auto;gap:7px;align-items:end;margin-bottom:7px}
@@ -162,6 +172,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .chip.gold.active{background:var(--gold-l);border-color:var(--gold);color:var(--gold-d)}
 .chip.silver.active{background:var(--sil-l);border-color:var(--sil);color:var(--sil-d)}
 .chip.diamond.active{background:var(--dia-l);border-color:var(--dia);color:var(--dia-d)}
+.chip.gemstone.active{background:var(--gem-l);border-color:var(--gem);color:var(--gem-d)}
+.chip.other.active{background:var(--oth-l);border-color:var(--oth);color:var(--oth-d)}
 .chip.all.active{background:var(--sur3);border-color:var(--bdr2);color:var(--txt)}
 .scard{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--rlg);margin-bottom:11px;overflow:hidden;box-shadow:var(--sh)}
 .schead{padding:11px 13px;display:flex;align-items:center;justify-content:space-between;cursor:pointer}
@@ -331,6 +343,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
         <button type="button" class="ag" onclick="setShareMaster('gold',this)">Gold</button>
         <button type="button" onclick="setShareMaster('silver',this)">Silver</button>
         <button type="button" onclick="setShareMaster('diamond',this)">Diamond</button>
+        <button type="button" onclick="setShareMaster('gemstone',this)">Gemstone</button>
+        <button type="button" onclick="setShareMaster('other',this)">Other</button>
       </div>
       <div class="fg" style="margin-bottom:8px"><label>Sub-Master</label><div class="irow">
         <select id="shsm" onchange="onShareSMChange()"><option value="">--</option></select>
@@ -430,7 +444,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <div class="card">
     <div class="ctitle">Compare Prices</div>
     <div class="frow">
-      <div class="fg"><label>Master</label><select id="cm" onchange="lcSub()"><option value="">All</option><option value="gold">Gold</option><option value="silver">Silver</option><option value="diamond">Diamond</option></select></div>
+      <div class="fg"><label>Master</label><select id="cm" onchange="lcSub()"><option value="">All</option><option value="gold">Gold</option><option value="silver">Silver</option><option value="diamond">Diamond</option><option value="gemstone">Gemstone</option><option value="other">Other</option></select></div>
       <div class="fg"><label>Sub-Master</label><select id="csm" onchange="lcIt()"><option value="">All</option></select></div>
       <div class="fg"><label>Item</label><select id="ci"><option value="">All</option></select></div>
     </div>
@@ -452,7 +466,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <div class="ctitle">&#128203; Browse</div>
     <div class="frow" style="margin-bottom:7px">
       <div class="fg"><label>View by</label><select id="brby" onchange="renderBr()"><option value="item">Item-wise</option><option value="supplier">Supplier-wise</option></select></div>
-      <div class="fg"><label>Master</label><select id="brm" onchange="renderBr()"><option value="">All</option><option value="gold">Gold</option><option value="silver">Silver</option><option value="diamond">Diamond</option></select></div>
+      <div class="fg"><label>Master</label><select id="brm" onchange="renderBr()"><option value="">All</option><option value="gold">Gold</option><option value="silver">Silver</option><option value="diamond">Diamond</option><option value="gemstone">Gemstone</option><option value="other">Other</option></select></div>
     </div>
     <div class="fg" style="margin-bottom:9px"><label>Search</label><input type="text" id="brsrch" placeholder="Item, supplier" oninput="debouncedRenderBr()"></div>
     <div id="brres"></div>
@@ -473,6 +487,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       <span class="chip gold" onclick="setCM('gold',this)">Gold</span>
       <span class="chip silver" onclick="setCM('silver',this)">Silver</span>
       <span class="chip diamond" onclick="setCM('diamond',this)">Diamond</span>
+      <span class="chip gemstone" onclick="setCM('gemstone',this)">Gemstone</span>
+      <span class="chip other" onclick="setCM('other',this)">Other</span>
     </div>
     <div class="filterrow">
       <span style="font-size:11px;color:var(--txt3);font-weight:500">Sort:</span>
@@ -589,7 +605,28 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <script>
-var DB={entries:[],subs:{gold:[],silver:[],diamond:[]},items:{},collections:{gold:[],silver:[],diamond:[]}};
+// Canonical list of every Master category. Adding a master in future only
+// needs an entry here (plus a CSS color trio like --gem/--gem-l/--gem-d) -
+// every picker, filter, and DB default below is generated from this array
+// rather than hardcoded per-master lists, specifically so this doesn't need
+// to happen again by hand in a dozen places.
+//   mode:"weight" -> Gold/Silver style: melting/wastage/tunch/labour quick table
+//   mode:"grade"  -> Diamond style: colour/clarity graded sub-items
+//   mode:"rate"   -> Other style: just a single flat rate, no melting/wastage
+var MASTERS = [
+  {k:"gold",     l:"Gold",     cls:"ag",  iblock:"g",  mode:"weight"},
+  {k:"silver",   l:"Silver",   cls:"as",  iblock:"s",  mode:"weight"},
+  {k:"diamond",  l:"Diamond",  cls:"ad",  iblock:"d",  mode:"grade"},
+  {k:"gemstone", l:"Gemstone", cls:"agm", iblock:"gm", mode:"grade"},
+  {k:"other",    l:"Other",    cls:"aot", iblock:"ot", mode:"rate"}
+];
+var MASTER_KEYS = MASTERS.map(function(m){return m.k;});
+function masterInfo(k){ return MASTERS.find(function(m){return m.k===k;}) || MASTERS[0]; }
+function isGradedMaster(m){ return masterInfo(m).mode==="grade"; }
+function isRateMaster(m){ return masterInfo(m).mode==="rate"; }
+function emptyByMaster(fill){ var o={}; MASTER_KEYS.forEach(function(k){ o[k]= (typeof fill==="function") ? fill() : fill; }); return o; }
+
+var DB={entries:[],subs:emptyByMaster(function(){return [];}),items:{},collections:emptyByMaster(function(){return [];})};
 var dbVersion=0; // bumped whenever entries/images change, so the catalogue tree cache knows to rebuild
 var driveFileId=null;
 var sides={front:null,back:null},shopPhs=[],supSV=0;
@@ -870,15 +907,15 @@ function addIB(){
   document.getElementById("ibempty").style.display="none";
   var today=new Date().toISOString().split("T")[0];
   var dv=document.createElement("div");
-  dv.className="iblock g";
+  dv.className="iblock "+masterInfo(MASTER_KEYS[0]).iblock;
   dv.id="ib"+id;
   var h = "";
   h += "<div class=\"ihead\"><span class=\"inum\">Item #"+id+"</span>";
   h += "<div style=\"display:flex;gap:5px;align-items:center\">";
   h += "<div class=\"mseg\" id=\"ms"+id+"\">";
-  h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"gold\" class=\"ag\">Gold</button>";
-  h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"silver\">Silver</button>";
-  h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"diamond\">Diamond</button>";
+  MASTERS.forEach(function(mi, mIdx){
+    h += "<button data-action=\"setIM\" data-id=\"" + id + "\" data-m=\"" + mi.k + "\"" + (mIdx===0 ? " class=\""+mi.cls+" selm\"" : "") + ">" + mi.l + "</button>";
+  });
   h += "</div>";
   h += "<button class=\"btn sm dan\" data-action=\"rmIB\" data-id=\"" + id + "\">Del</button>";
   h += "</div></div>";
@@ -933,7 +970,7 @@ function addIB(){
   dv.innerHTML = h;
   document.getElementById("ibwrap").appendChild(dv);
   wireItemBlockEvents(dv);
-  liSubs(id,"gold");
+  liSubs(id,MASTER_KEYS[0]);
 }
 
 function wireItemBlockEvents(container){
@@ -983,17 +1020,31 @@ function wireItemBlockEvents(container){
 }
 
 function rmIB(id){var el=document.getElementById("ib"+id);if(el)el.remove();delete iPhs[id];delete iStars[id];delete iVer[id];if(!document.getElementById("ibwrap").children.length)document.getElementById("ibempty").style.display="block";}
-function setIM(id,m,btn){document.getElementById("ib"+id).className="iblock "+m[0];document.querySelectorAll("#ms"+id+" button").forEach(function(b){b.className="";});btn.className=m==="gold"?"ag":m==="silver"?"as":"ad";document.getElementById("itnwrap"+id).style.display=m==="diamond"?"block":"none";document.getElementById("qtbl"+id).style.display=m==="diamond"?"none":"block";liSubs(id,m);}
-function getIM(id){var s=document.getElementById("ms"+id);var a=s.querySelector(".ag,.as,.ad");return a?a.className==="ag"?"gold":a.className==="as"?"silver":"diamond":"gold";}
+function setIM(id,m,btn){
+  var info=masterInfo(m);
+  document.getElementById("ib"+id).className="iblock "+info.iblock;
+  document.querySelectorAll("#ms"+id+" button").forEach(function(b){b.className="";});
+  btn.className=info.cls+" selm";
+  var graded = info.mode==="grade";
+  document.getElementById("itnwrap"+id).style.display=graded?"block":"none";
+  document.getElementById("qtbl"+id).style.display=graded?"none":"block";
+  liSubs(id,m);
+}
+function getIM(id){
+  var s=document.getElementById("ms"+id);
+  var a=s && s.querySelector(".selm");
+  return a ? a.getAttribute("data-m") : MASTER_KEYS[0];
+}
 function liSubs(id,m){var s=document.getElementById("sm"+id);var p=s.value;s.innerHTML='<option value="">--</option>';(DB.subs[m]||[]).forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});if(p)s.value=p;onSMChange(id);}
 
-// Dispatches to the right item-entry UI depending on master: Diamond keeps its
-// single item-name select (grades don't fit a flat row layout); Gold/Silver
-// get the fast multi-row quick-entry table instead.
+// Dispatches to the right item-entry UI depending on master: graded masters
+// (Diamond, Gemstone) keep the single item-name select (grades don't fit a
+// flat row layout); weight/rate masters get the fast multi-row quick-entry
+// table instead.
 function onSMChange(id){
   var m=getIM(id);
   var sm=document.getElementById("sm"+id).value;
-  if(m==="diamond"){ liN(id); }
+  if(isGradedMaster(m)){ liN(id); }
   else { renderQuickTable(id,m,sm); }
 }
 
@@ -1054,15 +1105,19 @@ function renderQuickTable(id,m,sm){
   }
   names.forEach(function(nm){
     var key=rk(id,nm);
-    h+='<div class="qrow" id="qr_'+key+'">';
+    h+='<div class="qrow" id="qr_'+key+'" data-key="'+key+'">';
     h+='<div class="qrow-name"><span>'+esc(nm)+'</span>';
     h+='<button type="button" class="qminibtn" data-qren="'+id+'|'+esc(nm)+'" title="Rename">&#9998;</button>';
     h+='<button type="button" class="qminibtn" data-qdel="'+id+'|'+esc(nm)+'" title="Delete">&#128465;</button></div>';
     h+='<div class="qrow-fields">';
-    h+='<input type="text" inputmode="decimal" class="qmel" placeholder="Melting" value="92" data-key="'+key+'" maxlength="4">';
-    h+='<input type="text" inputmode="decimal" class="qwst" placeholder="Wastage" data-key="'+key+'" maxlength="4">';
-    h+='<input type="text" class="qtun" placeholder="Tunch" data-key="'+key+'" readonly>';
-    h+='<input type="text" inputmode="decimal" class="qlab" placeholder="Labour" data-key="'+key+'" maxlength="5">';
+    if(isRateMaster(m)){
+      h+='<input type="text" inputmode="decimal" class="qrate" placeholder="Rate" data-key="'+key+'" maxlength="8">';
+    } else {
+      h+='<input type="text" inputmode="decimal" class="qmel" placeholder="Melting" value="92" data-key="'+key+'" maxlength="4">';
+      h+='<input type="text" inputmode="decimal" class="qwst" placeholder="Wastage" data-key="'+key+'" maxlength="4">';
+      h+='<input type="text" class="qtun" placeholder="Tunch" data-key="'+key+'" readonly>';
+      h+='<input type="text" inputmode="decimal" class="qlab" placeholder="Labour" data-key="'+key+'" maxlength="5">';
+    }
     h+='</div>';
     h+='<div class="qrow-actions">';
     h+='<button type="button" class="qicon" data-qcam="'+key+'" title="Camera - take multiple photos">&#128247;</button>';
@@ -1084,6 +1139,13 @@ function wireQuickTable(id,wrap){
       var parts=this.value.split(".");
       if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
       qCalcTunch(this.getAttribute("data-key"));
+    };
+  });
+  wrap.querySelectorAll(".qrate").forEach(function(inp){
+    inp.oninput=function(){
+      this.value=this.value.replace(/[^0-9.]/g,"");
+      var parts=this.value.split(".");
+      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
     };
   });
   wrap.querySelectorAll("[data-qcam]").forEach(function(btn){
@@ -1323,7 +1385,7 @@ document.getElementById("camDoneBtn").onclick=doneCameraCapture;
 document.getElementById("camCancelBtn").onclick=closeCameraCapture;
 function liN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;var s=document.getElementById("it"+id);var p=s.value;s.innerHTML='<option value="">--</option>';var k=m+"_"+sm;(DB.items[k]||[]).forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});if(p)s.value=p;}
 function addSM(id){var m=getIM(id);var n=prompt("New sub-master (e.g. Chutki):");if(!n||!n.trim())return;if(!DB.subs[m])DB.subs[m]=[];if(DB.subs[m].indexOf(n.trim())<0){DB.subs[m].push(n.trim());queueSync();}liSubs(id,m);document.getElementById("sm"+id).value=n.trim();onSMChange(id);toast("Sub-master added","ok");}
-function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());queueSync();}if(m==="diamond"){liN(id);document.getElementById("it"+id).value=n.trim();}else{renderQuickTable(id,m,sm);}toast("Item added","ok");}
+function addIN(id){var m=getIM(id);var sm=document.getElementById("sm"+id).value;if(!sm){toast("Select sub-master first","err");return;}var n=prompt("New item name:");if(!n||!n.trim())return;var k=m+"_"+sm;if(!DB.items[k])DB.items[k]=[];if(DB.items[k].indexOf(n.trim())<0){DB.items[k].push(n.trim());queueSync();}if(isGradedMaster(m)){liN(id);document.getElementById("it"+id).value=n.trim();}else{renderQuickTable(id,m,sm);}toast("Item added","ok");}
 
 // Rename/delete for the sub-master and item-name picklists. Renaming also
 // updates every already-saved entry that used the old name, so Browse,
@@ -1397,7 +1459,7 @@ function renIN(id, forcedOld){
     (e.items||[]).forEach(function(it){ if(it.master===m && it.submaster===sm && it.itemName===old){ it.itemName=n; changed++; } });
   });
   if(changed) dbVersion++;
-  if(m==="diamond"){ liN(id); document.getElementById("it"+id).value=n; }
+  if(isGradedMaster(m)){ liN(id); document.getElementById("it"+id).value=n; }
   else { renderQuickTable(id,m,sm); }
   toast("Renamed item"+(changed?(" and updated "+changed+" saved item(s)"):""),"ok");
   queueSync();
@@ -1420,7 +1482,7 @@ function delIN(id, forcedOld){
   }
   if(!confirm("Remove item name \""+old+"\" from the list?"))return;
   DB.items[k]=(DB.items[k]||[]).filter(function(v){return v!==old;});
-  if(m==="diamond"){ liN(id); } else { renderQuickTable(id,m,sm); }
+  if(isGradedMaster(m)){ liN(id); } else { renderQuickTable(id,m,sm); }
   toast("Item name removed from list","ok");
   queueSync();
 }
@@ -1622,7 +1684,7 @@ function colItems(){
     var id=parseInt(bl.id.replace("ib",""));
     if(isNaN(id))return;
     var m=getIM(id);
-    var isD=m==="diamond";
+    var isD=isGradedMaster(m);
     var sm=document.getElementById("sm"+id).value;
     var date=document.getElementById("dt"+id).value;
     if(isD){
@@ -1640,32 +1702,44 @@ function colItems(){
       it.grades=grades;
       items.push(it);
     } else {
-      // Quick-entry table: only rows where wastage or labour was actually
-      // typed in get saved - untouched rows (item exists in the picklist
-      // but wasn't priced today) are skipped entirely.
+      // Quick-entry table: only rows where something was actually typed in
+      // get saved - untouched rows (item exists in the picklist but wasn't
+      // priced today) are skipped entirely. Rate-mode masters (Other) only
+      // have a single Rate field instead of melting/wastage/tunch/labour.
       var qwrap=document.getElementById("qtbl"+id);
       if(!qwrap)return;
+      var rateMode=isRateMaster(m);
       qwrap.querySelectorAll(".qrow").forEach(function(row){
-        var wst=row.querySelector(".qwst").value.trim();
-        var lab=row.querySelector(".qlab").value.trim();
-        var key=row.querySelector(".qmel").getAttribute("data-key");
+        var key=row.getAttribute("data-key");
         var hasPhotos=(qImgs[key]||[]).length>0;
-        if(!wst && !lab && !hasPhotos) return;
         var nm=row.querySelector(".qrow-name span").textContent;
-        items.push({
-          master:m,
-          submaster:sm,
-          itemName:nm,
-          date:date,
-          notes:"",
-          stars:qStars[key]||0,
-          images:[].concat(qImgs[key]||[]),
-          melting:row.querySelector(".qmel").value.trim(),
-          wastage:wst,
-          tunch:row.querySelector(".qtun").value.trim(),
-          labour:lab,
-          meltingVerified:false
-        });
+        if(rateMode){
+          var rate=row.querySelector(".qrate").value.trim();
+          if(!rate && !hasPhotos) return;
+          items.push({
+            master:m, submaster:sm, itemName:nm, date:date, notes:"",
+            stars:qStars[key]||0, images:[].concat(qImgs[key]||[]),
+            rate:rate, melting:"", wastage:"", tunch:"", labour:"", meltingVerified:false
+          });
+        } else {
+          var wst=row.querySelector(".qwst").value.trim();
+          var lab=row.querySelector(".qlab").value.trim();
+          if(!wst && !lab && !hasPhotos) return;
+          items.push({
+            master:m,
+            submaster:sm,
+            itemName:nm,
+            date:date,
+            notes:"",
+            stars:qStars[key]||0,
+            images:[].concat(qImgs[key]||[]),
+            melting:row.querySelector(".qmel").value.trim(),
+            wastage:wst,
+            tunch:row.querySelector(".qtun").value.trim(),
+            labour:lab,
+            meltingVerified:false
+          });
+        }
       });
     }
   });
@@ -1770,8 +1844,8 @@ function clearAll(){
   document.getElementById("ibempty").style.display="block";
 }
 
-function lcSub(){var m=document.getElementById("cm").value;var s=document.getElementById("csm");s.innerHTML='<option value="">All</option>';var sms=m?(DB.subs[m]||[]):[].concat(DB.subs.gold||[]).concat(DB.subs.silver||[]).concat(DB.subs.diamond||[]).filter(function(v,i,a){return a.indexOf(v)===i;});sms.forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});lcIt();}
-function lcIt(){var m=document.getElementById("cm").value;var sm=document.getElementById("csm").value;var s=document.getElementById("ci");s.innerHTML='<option value="">All</option>';var ns=[];var ms=m?[m]:["gold","silver","diamond"];ms.forEach(function(mx){var k=mx+"_"+sm;(DB.items[k]||[]).forEach(function(n){if(ns.indexOf(n)<0)ns.push(n);});});ns.forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});}
+function lcSub(){var m=document.getElementById("cm").value;var s=document.getElementById("csm");s.innerHTML='<option value="">All</option>';var sms=m?(DB.subs[m]||[]):MASTER_KEYS.reduce(function(acc,mk){return acc.concat(DB.subs[mk]||[]);},[]).filter(function(v,i,a){return a.indexOf(v)===i;});sms.forEach(function(v){s.innerHTML+='<option value="'+esc(v)+'">'+esc(v)+"</option>";});lcIt();}
+function lcIt(){var m=document.getElementById("cm").value;var sm=document.getElementById("csm").value;var s=document.getElementById("ci");s.innerHTML='<option value="">All</option>';var ns=[];var ms=m?[m]:MASTER_KEYS;ms.forEach(function(mx){var k=mx+"_"+sm;(DB.items[k]||[]).forEach(function(n){if(ns.indexOf(n)<0)ns.push(n);});});ns.forEach(function(n){s.innerHTML+='<option value="'+esc(n)+'">'+esc(n)+"</option>";});}
 function setCS(f,el){csort=f;document.querySelectorAll(".spill:not(#cdirpill)").forEach(function(p){p.classList.remove("active");});el.classList.add("active");}
 function togCD(el){cdir=cdir==="asc"?"desc":"asc";el.textContent=cdir==="asc"?"Asc":"Desc";}
 function runCmp(){var mf=document.getElementById("cm").value,smf=document.getElementById("csm").value,itf=document.getElementById("ci").value;var flat=[];DB.entries.forEach(function(e){var sup=e.supplier||{};(e.items||[]).forEach(function(it){if(mf&&it.master!==mf)return;if(smf&&it.submaster!==smf)return;if(itf&&it.itemName!==itf)return;var o=Object.assign({},it);o.sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";flat.push(o);});});flat.sort(function(a,b){var va=0,vb=0;if(csort==="tunch"){va=parseFloat(a.tunch)||0;vb=parseFloat(b.tunch)||0;}else if(csort==="labour"){va=parseFloat(a.labour)||0;vb=parseFloat(b.labour)||0;}else if(csort==="stars"){va=a.stars||0;vb=b.stars||0;}else if(csort==="date"){va=new Date(a.date||0).getTime();vb=new Date(b.date||0).getTime();}return cdir==="asc"?va-vb:vb-va;});var c=document.getElementById("cmpres");if(!flat.length){c.innerHTML='<div class="empty"><div class="eicon">?</div>No entries match</div>';return;}var bT=Math.min.apply(null,flat.filter(function(x){return x.tunch;}).map(function(x){return parseFloat(x.tunch)||Infinity;}));var bL=Math.min.apply(null,flat.filter(function(x){return x.labour;}).map(function(x){return parseFloat(x.labour)||Infinity;}));c.innerHTML=flat.map(function(it){var iB=parseFloat(it.tunch)===bT;return'<div class="ccard '+(iB?"best":"")+'">'+( iB?'<div class="blabel">Lowest Tunch</div>':"")+'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:7px"><div><div style="font-weight:600;font-size:14px">'+esc(it.itemName||"--")+'</div><div style="font-size:11px;color:var(--txt3)">'+esc(it.sN)+" - "+esc(it.submaster||"")+'</div><div style="color:var(--brand);font-size:11px;margin-top:1px">'+"*".repeat(it.stars||0)+'</div></div><div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end"><span class="badge '+it.master+'">'+it.master+"</span>"+(it.meltingVerified?'<span class="badge ver">V</span>':"")+'</div></div><div class="pgrid"><div class="pcell"><div class="pl">Melting</div><div class="pv">'+(it.melting||"--")+'</div></div><div class="pcell"><div class="pl">Wastage</div><div class="pv">'+(it.wastage||"--")+'</div></div><div class="pcell '+(iB?"hl":"")+'"><div class="pl">Tunch</div><div class="pv">'+(it.tunch||"--")+'</div></div><div class="pcell '+(parseFloat(it.labour)===bL?"hl":"")+'"><div class="pl">Labour</div><div class="pv">'+(it.labour||"--")+'</div></div></div><div style="font-size:11px;color:var(--txt3);margin-top:5px">'+(it.date||"")+(it.notes?" - "+esc(it.notes):"")+"</div></div>";}).join("");}
@@ -1788,7 +1862,15 @@ function debounce(fn, ms){
 }
 var debouncedRenderBr = debounce(function(){ renderBr(); }, 180);
 
-function renderBr(){var by=document.getElementById("brby").value,mf=document.getElementById("brm").value,q=(document.getElementById("brsrch").value||"").toLowerCase();var flat=[];DB.entries.forEach(function(e){var sup=e.supplier||{};(e.items||[]).forEach(function(it,ii){if(mf&&it.master!==mf)return;if(q){var h=(it.itemName+it.submaster+(sup.firm||"")+(sup.contacts||[]).map(function(c){return c.name;}).join("")).toLowerCase();if(h.indexOf(q)<0)return;}var o=Object.assign({},it);o.sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";o.sId=e.id;o.sSt=sup.stars||0;o.sPhs=sup.phones||[];o.itemIdx=ii;flat.push(o);});});var c=document.getElementById("brres");if(!flat.length){c.innerHTML='<div class="empty"><div class="eicon">?</div>No entries found</div>';return;}if(by==="item"){var gr={};flat.forEach(function(it){var k=it.master+"|"+it.submaster+"|"+it.itemName;if(!gr[k])gr[k]=[];gr[k].push(it);});c.innerHTML=Object.entries(gr).map(function(kv){var k=kv[0],ents=kv[1];var parts=k.split("|");var m=parts[0],sm=parts[1],itN=parts[2];return'<div class="supcard"><div style="display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:8px"><div><div style="font-weight:600">'+esc(itN||"--")+'</div><div style="display:flex;gap:4px;margin-top:2px"><span class="badge '+m+'">'+m+'</span><span style="font-size:11px;color:var(--txt3)">'+esc(sm)+'</span></div></div><span style="font-size:11px;color:var(--txt3)">'+ents.length+" supplier"+(ents.length>1?"s":"")+"</span></div>"+ents.map(function(it){return'<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--bdr)"><div><div style="font-size:12px;font-weight:500">'+esc(it.sN)+'</div><div style="font-size:10px;color:var(--txt3)">'+(it.date||"")+(it.meltingVerified?" V":"")+'</div><div style="color:var(--brand);font-size:11px">'+"*".repeat(it.stars||0)+'</div></div><div style="display:flex;align-items:center;gap:6px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;text-align:right"><div><div style="font-size:10px;color:var(--txt3)">Tunch</div><div style="font-size:13px;font-weight:600">'+(it.tunch||"--")+'</div></div><div><div style="font-size:10px;color:var(--txt3)">Labour</div><div style="font-size:13px;font-weight:600">'+(it.labour||"--")+'</div></div></div><button type="button" class="qminibtn" style="font-size:15px" onclick="openBrEdit(\''+it.sId+'\','+it.itemIdx+')" title="Edit">&#9998;</button></div></div>';}).join("")+"</div>";}).join("");}else{var gr2={};flat.forEach(function(it){if(!gr2[it.sId])gr2[it.sId]={n:it.sN,st:it.sSt,ph:it.sPhs,items:[]};gr2[it.sId].items.push(it);});c.innerHTML=Object.entries(gr2).map(function(kv){var sid=kv[0],g=kv[1];var ini=(g.n||"?").substring(0,2).toUpperCase();return'<div class="supcard"><div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><div class="supav">'+ini+'</div><div><div style="font-weight:600">'+esc(g.n)+'</div><div style="font-size:11px;color:var(--txt3)">'+g.ph.map(function(p){return p.number;}).join(" - ")+'</div><div style="color:var(--brand);font-size:11px">'+"*".repeat(g.st)+"</div></div></div>"+g.items.map(function(it){return'<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid var(--bdr)"><div><span class="badge '+it.master+'" style="margin-right:4px">'+it.master+'</span><span style="font-size:12px">'+esc(it.submaster)+" > "+esc(it.itemName||"--")+'</span></div><div style="display:flex;align-items:center;gap:6px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;text-align:right"><div><div style="font-size:10px;color:var(--txt3)">Tunch</div><div style="font-size:13px;font-weight:600">'+(it.tunch||"--")+'</div></div><div><div style="font-size:10px;color:var(--txt3)">Labour</div><div style="font-size:13px;font-weight:600">'+(it.labour||"--")+'</div></div></div><button type="button" class="qminibtn" style="font-size:15px" onclick="openBrEdit(\''+it.sId+'\','+it.itemIdx+')" title="Edit">&#9998;</button></div></div>';}).join("")+"</div>";}).join("");}}
+// "Other" items only have a single Rate field (no melting/wastage/tunch/
+// labour breakdown) - everything else keeps the existing Tunch/Labour grid.
+function brFieldsHtml(it){
+  if(isRateMaster(it.master)){
+    return '<div style="text-align:right"><div style="font-size:10px;color:var(--txt3)">Rate</div><div style="font-size:13px;font-weight:600">'+(it.rate||"--")+'</div></div>';
+  }
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;text-align:right"><div><div style="font-size:10px;color:var(--txt3)">Tunch</div><div style="font-size:13px;font-weight:600">'+(it.tunch||"--")+'</div></div><div><div style="font-size:10px;color:var(--txt3)">Labour</div><div style="font-size:13px;font-weight:600">'+(it.labour||"--")+'</div></div></div>';
+}
+function renderBr(){var by=document.getElementById("brby").value,mf=document.getElementById("brm").value,q=(document.getElementById("brsrch").value||"").toLowerCase();var flat=[];DB.entries.forEach(function(e){var sup=e.supplier||{};(e.items||[]).forEach(function(it,ii){if(mf&&it.master!==mf)return;if(q){var h=(it.itemName+it.submaster+(sup.firm||"")+(sup.contacts||[]).map(function(c){return c.name;}).join("")).toLowerCase();if(h.indexOf(q)<0)return;}var o=Object.assign({},it);o.sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";o.sId=e.id;o.sSt=sup.stars||0;o.sPhs=sup.phones||[];o.itemIdx=ii;flat.push(o);});});var c=document.getElementById("brres");if(!flat.length){c.innerHTML='<div class="empty"><div class="eicon">?</div>No entries found</div>';return;}if(by==="item"){var gr={};flat.forEach(function(it){var k=it.master+"|"+it.submaster+"|"+it.itemName;if(!gr[k])gr[k]=[];gr[k].push(it);});c.innerHTML=Object.entries(gr).map(function(kv){var k=kv[0],ents=kv[1];var parts=k.split("|");var m=parts[0],sm=parts[1],itN=parts[2];return'<div class="supcard"><div style="display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:8px"><div><div style="font-weight:600">'+esc(itN||"--")+'</div><div style="display:flex;gap:4px;margin-top:2px"><span class="badge '+m+'">'+m+'</span><span style="font-size:11px;color:var(--txt3)">'+esc(sm)+'</span></div></div><span style="font-size:11px;color:var(--txt3)">'+ents.length+" supplier"+(ents.length>1?"s":"")+"</span></div>"+ents.map(function(it){return'<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--bdr)"><div><div style="font-size:12px;font-weight:500">'+esc(it.sN)+'</div><div style="font-size:10px;color:var(--txt3)">'+(it.date||"")+(it.meltingVerified?" V":"")+'</div><div style="color:var(--brand);font-size:11px">'+"*".repeat(it.stars||0)+'</div></div><div style="display:flex;align-items:center;gap:6px">'+brFieldsHtml(it)+'<button type="button" class="qminibtn" style="font-size:15px" onclick="openBrEdit(\''+it.sId+'\','+it.itemIdx+')" title="Edit">&#9998;</button></div></div>';}).join("")+"</div>";}).join("");}else{var gr2={};flat.forEach(function(it){if(!gr2[it.sId])gr2[it.sId]={n:it.sN,st:it.sSt,ph:it.sPhs,items:[]};gr2[it.sId].items.push(it);});c.innerHTML=Object.entries(gr2).map(function(kv){var sid=kv[0],g=kv[1];var ini=(g.n||"?").substring(0,2).toUpperCase();return'<div class="supcard"><div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><div class="supav">'+ini+'</div><div><div style="font-weight:600">'+esc(g.n)+'</div><div style="font-size:11px;color:var(--txt3)">'+g.ph.map(function(p){return p.number;}).join(" - ")+'</div><div style="color:var(--brand);font-size:11px">'+"*".repeat(g.st)+"</div></div></div>"+g.items.map(function(it){return'<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid var(--bdr)"><div><span class="badge '+it.master+'" style="margin-right:4px">'+it.master+'</span><span style="font-size:12px">'+esc(it.submaster)+" > "+esc(it.itemName||"--")+'</span></div><div style="display:flex;align-items:center;gap:6px">'+brFieldsHtml(it)+'<button type="button" class="qminibtn" style="font-size:15px" onclick="openBrEdit(\''+it.sId+'\','+it.itemIdx+')" title="Edit">&#9998;</button></div></div>';}).join("")+"</div>";}).join("");}}
 
 function setCM(m,el){catMaster=m;catCollection="";document.querySelectorAll(".chip").forEach(function(c){c.classList.remove("active");});el.classList.add("active");renderCat();}
 function setCatSort(s,el){catSort=s;document.querySelectorAll(".fpill").forEach(function(p){if(p.id!=="catSelBtn")p.classList.remove("active");});el.classList.add("active");renderCat();}
@@ -1806,7 +1888,7 @@ function liCatCollections(){
     names = (DB.collections[catMaster]||[]).slice();
   } else {
     var seen = {};
-    ["gold","silver","diamond"].forEach(function(m){ (DB.collections[m]||[]).forEach(function(n){ seen[n]=true; }); });
+    MASTER_KEYS.forEach(function(m){ (DB.collections[m]||[]).forEach(function(n){ seen[n]=true; }); });
     names = Object.keys(seen);
   }
   sel.innerHTML = '<option value="">All collections</option>' + names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+"</option>"; }).join("");
@@ -1861,7 +1943,7 @@ var _catTreeCache=null,_catTreeCacheKey=null;
 function buildCatTree(){
   var key=dbVersion+"|"+(catMaster||"")+"|"+(catCollection||"");
   if(_catTreeCache && _catTreeCacheKey===key) return _catTreeCache;
-  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
+  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
   _catTreeCache=tree;_catTreeCacheKey=key;
   return tree;
 }
@@ -2079,7 +2161,16 @@ function toggleInfo(){
   var p=document.getElementById("infopanel");
   if(p.classList.contains("open")){ p.classList.remove("open"); return; }
   var meta=lbMeta[lbIdx]||{};
-  var rows=[{l:"Item",v:meta.itemName||"--"},{l:"Supplier",v:meta.supName||"--"},{l:"Date",v:meta.date||"--"},{l:"Collection",v:meta.collection||"--"},{l:"Melting",v:(meta.melting||"--")+(meta.meltingVerified?" V":"")},{l:"Wastage",v:meta.wastage||"--"},{l:"Tunch",v:meta.tunch||"--"},{l:"Labour",v:meta.labour||"--"},{l:"Image Stars",v:(meta.stars||0)+" star"+(meta.stars===1?"":"s")}];
+  var rows=[{l:"Item",v:meta.itemName||"--"},{l:"Supplier",v:meta.supName||"--"},{l:"Date",v:meta.date||"--"},{l:"Collection",v:meta.collection||"--"}];
+  if(isRateMaster(meta.master)){
+    rows.push({l:"Rate",v:meta.rate||"--"});
+  } else {
+    rows.push({l:"Melting",v:(meta.melting||"--")+(meta.meltingVerified?" V":"")});
+    rows.push({l:"Wastage",v:meta.wastage||"--"});
+    rows.push({l:"Tunch",v:meta.tunch||"--"});
+    rows.push({l:"Labour",v:meta.labour||"--"});
+  }
+  rows.push({l:"Image Stars",v:(meta.stars||0)+" star"+(meta.stars===1?"":"s")});
   document.getElementById("inforows").innerHTML=rows.map(function(r){return'<div class="inforow"><div class="infolbl">'+r.l+'</div><div class="infoval">'+esc(String(r.v))+"</div></div>";}).join("");
   var editWrap=document.getElementById("infoeditwrap");
   // Editing only makes sense for real saved catalogue items (they carry entryId/itemIdx) -
@@ -2103,11 +2194,15 @@ function startInfoEdit(){
     '<button type="button" class="btn sm ghost" onclick="ieAddCollection()">+</button>'+
     '</div></div>'
   ) : "";
-  editWrap.innerHTML=colField+
+  var priceFields = isRateMaster(meta.master) ? (
+    '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Rate</label><input type="text" inputmode="decimal" id="ieRate" value="'+esc(meta.rate||"")+'" maxlength="8" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'
+  ) : (
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Melting</label><input type="text" inputmode="decimal" id="ieMel" value="'+esc(meta.melting||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Wastage</label><input type="text" inputmode="decimal" id="ieWst" value="'+esc(meta.wastage||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Tunch (auto)</label><input type="text" id="ieTun" value="'+esc(meta.tunch||"")+'" readonly style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--txt3)"></div>'+
-    '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Labour</label><input type="text" inputmode="decimal" id="ieLab" value="'+esc(meta.labour||"")+'" maxlength="5" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
+    '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Labour</label><input type="text" inputmode="decimal" id="ieLab" value="'+esc(meta.labour||"")+'" maxlength="5" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'
+  );
+  editWrap.innerHTML=colField+priceFields+
     '<div style="display:flex;gap:8px">'+
     '<button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="toggleInfo();toggleInfo();">Cancel</button>'+
     '<button type="button" class="btn sm pri" style="flex:1;justify-content:center" onclick="saveInfoEdit()">Save</button>'+
@@ -2118,19 +2213,27 @@ function startInfoEdit(){
     var wst=wstEl.value.trim();
     document.getElementById("ieTun").value = wst==="" ? "" : (mel+(parseFloat(wst)||0)).toFixed(2);
   };
-  ["ieMel","ieWst"].forEach(function(id){
-    document.getElementById(id).oninput=function(){
+  if(isRateMaster(meta.master)){
+    document.getElementById("ieRate").oninput=function(){
       this.value=this.value.replace(/[^0-9.]/g,"");
       var parts=this.value.split(".");
       if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
-      recalc();
     };
-  });
-  document.getElementById("ieLab").oninput=function(){
-    this.value=this.value.replace(/[^0-9.]/g,"");
-    var parts=this.value.split(".");
-    if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
-  };
+  } else {
+    ["ieMel","ieWst"].forEach(function(id){
+      document.getElementById(id).oninput=function(){
+        this.value=this.value.replace(/[^0-9.]/g,"");
+        var parts=this.value.split(".");
+        if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
+        recalc();
+      };
+    });
+    document.getElementById("ieLab").oninput=function(){
+      this.value=this.value.replace(/[^0-9.]/g,"");
+      var parts=this.value.split(".");
+      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
+    };
+  }
 }
 
 function ieAddCollection(){
@@ -2153,13 +2256,19 @@ function saveInfoEdit(){
   var e=DB.entries.find(function(x){return x.id===meta.entryId;});
   if(!e || !e.items[meta.itemIdx]){ toast("Couldn't find that saved item","err"); return; }
   var it=e.items[meta.itemIdx];
-  var mel=document.getElementById("ieMel").value.trim();
-  var wst=document.getElementById("ieWst").value.trim();
-  var tun=document.getElementById("ieTun").value.trim();
-  var lab=document.getElementById("ieLab").value.trim();
-  it.melting=mel; it.wastage=wst; it.tunch=tun; it.labour=lab;
-  // keep the in-memory lightbox meta and the catalogue's cache in sync too
-  meta.melting=mel; meta.wastage=wst; meta.tunch=tun; meta.labour=lab;
+  if(isRateMaster(meta.master)){
+    var rate=document.getElementById("ieRate").value.trim();
+    it.rate=rate;
+    meta.rate=rate;
+  } else {
+    var mel=document.getElementById("ieMel").value.trim();
+    var wst=document.getElementById("ieWst").value.trim();
+    var tun=document.getElementById("ieTun").value.trim();
+    var lab=document.getElementById("ieLab").value.trim();
+    it.melting=mel; it.wastage=wst; it.tunch=tun; it.labour=lab;
+    // keep the in-memory lightbox meta and the catalogue's cache in sync too
+    meta.melting=mel; meta.wastage=wst; meta.tunch=tun; meta.labour=lab;
+  }
   var colSel=document.getElementById("ieCol");
   if(colSel && !meta.isGrade && meta.imgIdx!==undefined && it.images && it.images[meta.imgIdx]){
     var newCol=colSel.value;
@@ -2278,8 +2387,8 @@ function openBrEdit(entryId, itemIdx){
   var imgs=(it.images||[]);
   var srcs = imgs.length ? imgs.map(function(im){return typeof im==="string"?im:im.src;}) : [""];
   var metas = imgs.length ? imgs.map(function(im){
-    return {itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",meltingVerified:it.meltingVerified||false,stars:(typeof im==="object"?im.stars:0)||0,mediaType:(typeof im==="object"?im.type:"image")||"image",entryId:entryId,itemIdx:itemIdx};
-  }) : [{itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",meltingVerified:it.meltingVerified||false,stars:0,entryId:entryId,itemIdx:itemIdx}];
+    return {itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",master:it.master,meltingVerified:it.meltingVerified||false,stars:(typeof im==="object"?im.stars:0)||0,mediaType:(typeof im==="object"?im.type:"image")||"image",entryId:entryId,itemIdx:itemIdx};
+  }) : [{itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",master:it.master,meltingVerified:it.meltingVerified||false,stars:0,entryId:entryId,itemIdx:itemIdx}];
   openLB(srcs, metas, 0);
   toggleInfo();
   startInfoEdit();
@@ -2451,7 +2560,7 @@ setTimeout(markDriveReady, 6000);
 // how many Drives are actually behind it.
 var ACCOUNTS_KEY="pb_accounts_v1", ACTIVE_KEY="pb_active_by_master_v1";
 var driveAccounts=[];                          // [{id,label,master,email}]
-var activeByMaster={gold:null,silver:null,diamond:null};
+var activeByMaster=emptyByMaster(null);
 var acctAuth={};                               // accId -> {token,exp}
 var acctFileId={};                             // accId -> DRFILE's Drive fileId (cache)
 var acctImgFolder={};                          // accId -> PricebookImages folder id (cache)
@@ -2466,7 +2575,7 @@ var _pendingConnectId=null;
 
 function loadAccountsConfig(){
   try{ var raw=localStorage.getItem(ACCOUNTS_KEY); driveAccounts = raw?JSON.parse(raw):[]; }catch(e){ driveAccounts=[]; }
-  try{ var raw2=localStorage.getItem(ACTIVE_KEY); activeByMaster = raw2?JSON.parse(raw2):{gold:null,silver:null,diamond:null}; }catch(e){ activeByMaster={gold:null,silver:null,diamond:null}; }
+  try{ var raw2=localStorage.getItem(ACTIVE_KEY); activeByMaster = raw2?JSON.parse(raw2):emptyByMaster(null); }catch(e){ activeByMaster=emptyByMaster(null); }
   // One-time migration: earlier versions of this app only supported a single
   // connected Drive. If nothing's configured yet, wrap that old connection up
   // as a normal account (reusing its cached token so nobody has to
@@ -2870,9 +2979,11 @@ async function loadOneAccountData(accId){
   // Remove any previous entries from this same account before merging in the
   // fresh copy (keeps re-loads / reconnects idempotent instead of duplicating).
   DB.entries = DB.entries.filter(function(e){ return e._acc !== accId; }).concat(entries);
-  ["gold","silver","diamond"].forEach(function(m){
+  MASTER_KEYS.forEach(function(m){
+    if(!DB.subs[m]) DB.subs[m]=[];
+    if(!DB.collections[m]) DB.collections[m]=[];
     (data.subs && data.subs[m] || []).forEach(function(v){ if(DB.subs[m].indexOf(v)<0) DB.subs[m].push(v); });
-    (data.collections && data.collections[m] || []).forEach(function(v){ if(!DB.collections[m]) DB.collections[m]=[]; if(DB.collections[m].indexOf(v)<0) DB.collections[m].push(v); });
+    (data.collections && data.collections[m] || []).forEach(function(v){ if(DB.collections[m].indexOf(v)<0) DB.collections[m].push(v); });
   });
   Object.keys(data.items||{}).forEach(function(k){
     if(!DB.items[k]) DB.items[k]=[];
@@ -2978,7 +3089,7 @@ function renderDriveStatus(){
   var body=document.getElementById("drivesBody");
   var modal=document.getElementById("drives-modal");
   if(!body || !modal || !modal.classList.contains("open")) return;
-  var mastersInfo=[{k:"gold",l:"Gold"},{k:"silver",l:"Silver"},{k:"diamond",l:"Diamond"}];
+  var mastersInfo=MASTERS.map(function(mi){ return {k:mi.k, l:mi.l}; });
   body.innerHTML = mastersInfo.map(function(mi){
     var accs = driveAccounts.filter(function(a){ return a.master===mi.k || a.master===null; });
     var rows = accs.map(function(a){
@@ -3386,7 +3497,7 @@ function closeShareScreen(){
 function setShareMaster(m, btn){
   shareMaster = m;
   document.querySelectorAll("#shMseg button").forEach(function(b){ b.className=""; });
-  if(btn) btn.className = m==="gold"?"ag":m==="silver"?"as":"ad";
+  if(btn) btn.className = masterInfo(m).cls;
   liShareSubs(m);
   liShareCollections(m);
 }
