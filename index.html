@@ -397,7 +397,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       <button class="btn pri sm" id="scanbtn" onclick="scanCard()" disabled style="opacity:.45;margin-bottom:9px">&#128269; Read with AI</button>
       <div id="cardimgstrip" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
       <div class="div"></div>
-      <div class="fg" style="margin-bottom:8px"><label>Firm / Shop name</label><input type="text" id="sfirm" placeholder="e.g. Khandwal Jewellery House"></div>
+      <div class="fg" style="margin-bottom:8px"><label>Firm / Shop name</label><input type="text" id="sfirm" list="firmList" placeholder="e.g. Khandwal Jewellery House" autocomplete="off"><datalist id="firmList"></datalist></div>
       <div style="display:flex;gap:6px;margin-bottom:8px">
         <button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="importFromContacts()">&#128100; Import from Contacts</button>
         <button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="exportToContacts()">&#128190; Save to Contacts</button>
@@ -520,7 +520,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 <div class="pg" id="pg-sup">
   <div class="card">
     <div class="ctitle">&#127978; Suppliers</div>
-    <div class="fg" style="margin-bottom:9px"><input type="text" id="supsrch" placeholder="Search" oninput="renderSup()"></div>
+    <div class="fg" style="margin-bottom:9px"><input type="text" id="supsrch" placeholder="Search" oninput="debouncedRenderSup()"></div>
     <div id="suplist"></div>
   </div>
 </div>
@@ -1773,6 +1773,7 @@ async function saveAll(){
     });
     dbVersion++;
     if(savedCount) queueSync();
+    renderFirmList();
     if(blocked.length){
       toast("No Drive connected for "+blocked.join(", ")+" yet - connect one in Manage Drives. "+(savedCount?"Rest saved.":"Nothing saved."),"err");
     } else {
@@ -1861,6 +1862,7 @@ function debounce(fn, ms){
   };
 }
 var debouncedRenderBr = debounce(function(){ renderBr(); }, 180);
+var debouncedRenderSup = debounce(function(){ renderSup(); }, 180);
 
 // "Other" items only have a single Rate field (no melting/wastage/tunch/
 // labour breakdown) - everything else keeps the existing Tunch/Labour grid.
@@ -2998,6 +3000,7 @@ async function loadOneAccountData(accId){
   acctLastSynced[accId]=Date.now();
   var freshSlice = DB.entries.filter(function(e){ return e._acc===accId; });
   acctLastSavedContent[accId] = JSON.stringify(slimForDrive({entries:freshSlice, subs:DB.subs, items:DB.items, collections:DB.collections}));
+  renderFirmList();
   if(localOnly.length){
     toast("Recovered "+localOnly.length+" item(s) that hadn't finished syncing - uploading now","info");
     queueSync();
@@ -3065,10 +3068,46 @@ function scheduleLocalSnapshot(){
   // fresh to recover.
   _localSaveTimer=setTimeout(saveLocalSnapshotNow, 400);
 }
+// Strips inline photo/video bytes for anything that's already safely on
+// Drive (has a .driveId) before writing the local snapshot - those don't
+// need a second on-device copy, only genuinely unsynced media does. Doing
+// this with plain object/array copies (not a JSON.stringify+parse round
+// trip like slimForDrive uses) matters here: with a large catalog, cloning
+// every already-synced photo's full base64 data on every single keystroke
+// batch would itself cause exactly the kind of slowdown/jank this is meant
+// to prevent - the app should always feel light regardless of how many
+// photos are already safely uploaded.
+function slimEntriesForLocalSnapshot(entries){
+  function stripImg(img){
+    if(img && typeof img==="object" && img.driveId){
+      var c=Object.assign({}, img);
+      delete c.src;
+      return c;
+    }
+    return img;
+  }
+  return (entries||[]).map(function(e){
+    var sup=e.supplier||{};
+    var supCopy=Object.assign({}, sup);
+    if(sup.photos && sup.photosRef) supCopy.photos = sup.photos.map(function(src,i){ return sup.photosRef[i] ? null : src; });
+    if(sup.cardImages && sup.cardImagesRef) supCopy.cardImages = sup.cardImages.map(function(src,i){ return sup.cardImagesRef[i] ? null : src; });
+    var itemsCopy=(e.items||[]).map(function(it){
+      var itCopy=Object.assign({}, it);
+      if(itCopy.images) itCopy.images = itCopy.images.map(stripImg);
+      if(itCopy.grades) itCopy.grades = itCopy.grades.map(function(g){
+        var gCopy=Object.assign({}, g);
+        if(gCopy.images) gCopy.images = gCopy.images.map(stripImg);
+        return gCopy;
+      });
+      return itCopy;
+    });
+    return Object.assign({}, e, {supplier:supCopy, items:itemsCopy});
+  });
+}
 async function saveLocalSnapshotNow(){
   try{
     var db=await localDbOpen();
-    var payload={entries:DB.entries, subs:DB.subs, items:DB.items, collections:DB.collections, savedAt:Date.now()};
+    var payload={entries:slimEntriesForLocalSnapshot(DB.entries), subs:DB.subs, items:DB.items, collections:DB.collections, savedAt:Date.now()};
     var tx=db.transaction(LOCAL_STORE_NAME,"readwrite");
     tx.objectStore(LOCAL_STORE_NAME).put(payload, LOCAL_KEY);
   }catch(e){ console.log("local snapshot save failed:", e); }
@@ -3090,6 +3129,26 @@ async function loadLocalSnapshot(){
 // overwrite) then reconciles this against each account's Drive copy once
 // reconnected, keeping anything Drive doesn't know about yet instead of
 // discarding it.
+// Restores .src for any already-synced image (has driveId, no src because
+// the local snapshot deliberately doesn't duplicate synced photo bytes)
+// straight from the on-device image cache - no network, no waiting on Drive
+// to reconnect. Only images never viewed/cached before stay unfilled until
+// Drive actually reconnects and re-fetches them.
+async function hydrateFromLocalCacheOnly(entries){
+  var refs=[];
+  (entries||[]).forEach(function(e){
+    (e.items||[]).forEach(function(it){
+      (it.images||[]).forEach(function(img){ if(img && typeof img==="object" && img.driveId && !img.src) refs.push(img); });
+      (it.grades||[]).forEach(function(g){ (g.images||[]).forEach(function(img){ if(img && typeof img==="object" && img.driveId && !img.src) refs.push(img); }); });
+    });
+  });
+  await Promise.all(refs.map(async function(img){
+    try{
+      var cached = await idbGetImg(img.driveId);
+      if(cached){ img.src=cached; imgCache[img.driveId]=cached; }
+    }catch(e){}
+  }));
+}
 async function applyLocalSnapshot(){
   var snap = await loadLocalSnapshot();
   if(!snap) return;
@@ -3099,7 +3158,9 @@ async function applyLocalSnapshot(){
     if(snap.collections && snap.collections[m]) DB.collections[m]=snap.collections[m];
   });
   if(snap.items) DB.items = snap.items;
+  await hydrateFromLocalCacheOnly(DB.entries);
   dbVersion++;
+  renderFirmList();
 }
 
 async function loadAllAccounts(){
@@ -3700,6 +3761,20 @@ function onShareColAllChange(){
   document.getElementById("shPerImgCols").style.display = all ? "none" : "block";
 }
 
+// Populates the datalist behind the Firm/Shop name field on the Add page so
+// typing (or just clicking the field) offers every supplier already saved
+// anywhere across all connected Drives, not just this session's entries.
+function renderFirmList(){
+  var dl = document.getElementById("firmList");
+  if(!dl) return;
+  var names = {};
+  (DB.entries||[]).forEach(function(e){
+    var sup = e.supplier||{};
+    var n = sup.firm || ((sup.contacts||[])[0]||{}).name;
+    if(n) names[n] = true;
+  });
+  dl.innerHTML = Object.keys(names).sort(function(a,b){return a.localeCompare(b);}).map(function(n){ return '<option value="'+esc(n)+'">'; }).join("");
+}
 function renderShareSupplierList(){
   var sel = document.getElementById("shsupSel");
   if(!sel) return;
