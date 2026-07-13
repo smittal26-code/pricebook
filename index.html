@@ -2976,9 +2976,13 @@ async function loadOneAccountData(accId){
   var entries = data.entries || [];
   entries.forEach(function(e){ e._acc = accId; });
   await hydrateImages(accId, entries);
-  // Remove any previous entries from this same account before merging in the
-  // fresh copy (keeps re-loads / reconnects idempotent instead of duplicating).
-  DB.entries = DB.entries.filter(function(e){ return e._acc !== accId; }).concat(entries);
+  // Anything saved locally for this account but NOT present in this fresh
+  // Drive copy is an unsynced change from before (e.g. the app got killed
+  // mid-sync before it could upload) - keep it rather than silently
+  // discarding it, and re-queue a sync so it actually makes it to Drive now.
+  var freshIds={}; entries.forEach(function(e){ freshIds[e.id]=true; });
+  var localOnly = DB.entries.filter(function(e){ return e._acc===accId && !freshIds[e.id]; });
+  DB.entries = DB.entries.filter(function(e){ return e._acc !== accId; }).concat(entries).concat(localOnly);
   MASTER_KEYS.forEach(function(m){
     if(!DB.subs[m]) DB.subs[m]=[];
     if(!DB.collections[m]) DB.collections[m]=[];
@@ -2994,6 +2998,10 @@ async function loadOneAccountData(accId){
   acctLastSynced[accId]=Date.now();
   var freshSlice = DB.entries.filter(function(e){ return e._acc===accId; });
   acctLastSavedContent[accId] = JSON.stringify(slimForDrive({entries:freshSlice, subs:DB.subs, items:DB.items, collections:DB.collections}));
+  if(localOnly.length){
+    toast("Recovered "+localOnly.length+" item(s) that hadn't finished syncing - uploading now","info");
+    queueSync();
+  }
 }
 
 // Connects (or silently reconnects) one account slot and loads its data.
@@ -3026,9 +3034,79 @@ async function connectAccount(accId, isNew){
   }
 }
 
+// ===== Local durable snapshot =====
+// The "Saved" you see right after adding an item only means it's in memory
+// and queued to upload - if Android kills the app before that upload
+// finishes (which is exactly what happens when e.g. the native Contact
+// Picker triggers a background-kill), everything in memory was lost with no
+// way back. This mirrors the whole DB to IndexedDB (on-device, no network
+// needed) a fraction of a second after every change, so even a mid-sync
+// kill has something durable to recover from the moment the app reopens -
+// independent of whether Drive itself ever got the upload.
+var LOCAL_DB_NAME="pblocaldb", LOCAL_STORE_NAME="snapshot", LOCAL_KEY="main";
+var _localDbP=null;
+function localDbOpen(){
+  if(_localDbP) return _localDbP;
+  _localDbP=new Promise(function(resolve,reject){
+    try{
+      var req=indexedDB.open(LOCAL_DB_NAME,1);
+      req.onupgradeneeded=function(){ req.result.createObjectStore(LOCAL_STORE_NAME); };
+      req.onsuccess=function(){ resolve(req.result); };
+      req.onerror=function(){ reject(req.error); };
+    }catch(e){ reject(e); }
+  });
+  return _localDbP;
+}
+var _localSaveTimer=null;
+function scheduleLocalSnapshot(){
+  clearTimeout(_localSaveTimer);
+  // Short on purpose - long enough to coalesce rapid successive edits into
+  // one write, short enough that a kill moments later still has something
+  // fresh to recover.
+  _localSaveTimer=setTimeout(saveLocalSnapshotNow, 400);
+}
+async function saveLocalSnapshotNow(){
+  try{
+    var db=await localDbOpen();
+    var payload={entries:DB.entries, subs:DB.subs, items:DB.items, collections:DB.collections, savedAt:Date.now()};
+    var tx=db.transaction(LOCAL_STORE_NAME,"readwrite");
+    tx.objectStore(LOCAL_STORE_NAME).put(payload, LOCAL_KEY);
+  }catch(e){ console.log("local snapshot save failed:", e); }
+}
+async function loadLocalSnapshot(){
+  try{
+    var db=await localDbOpen();
+    return await new Promise(function(resolve){
+      var tx=db.transaction(LOCAL_STORE_NAME,"readonly");
+      var req=tx.objectStore(LOCAL_STORE_NAME).get(LOCAL_KEY);
+      req.onsuccess=function(){ resolve(req.result||null); };
+      req.onerror=function(){ resolve(null); };
+    });
+  }catch(e){ return null; }
+}
+// Applied at startup, before Drive even finishes reconnecting, so anything
+// saved locally but not yet synced is visible immediately - including
+// working fully offline. loadOneAccountData()'s merge logic (not a blind
+// overwrite) then reconciles this against each account's Drive copy once
+// reconnected, keeping anything Drive doesn't know about yet instead of
+// discarding it.
+async function applyLocalSnapshot(){
+  var snap = await loadLocalSnapshot();
+  if(!snap) return;
+  DB.entries = snap.entries || [];
+  MASTER_KEYS.forEach(function(m){
+    if(snap.subs && snap.subs[m]) DB.subs[m]=snap.subs[m];
+    if(snap.collections && snap.collections[m]) DB.collections[m]=snap.collections[m];
+  });
+  if(snap.items) DB.items = snap.items;
+  dbVersion++;
+}
+
 async function loadAllAccounts(){
   loadAccountsConfig();
+  await applyLocalSnapshot();
   renderDriveStatus();
+  renderCat(); renderBr(); renderSup(); // show whatever's on-device immediately, even before Drive reconnects
   // Sequential on purpose: GIS's token client has one shared callback, so
   // firing requestAccessToken for several accounts at once risks a response
   // landing on the wrong account. Accounts with an already-cached token skip
@@ -3041,6 +3119,7 @@ async function loadAllAccounts(){
   markDriveReady();
   setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary());
   renderCat(); renderBr(); renderSup();
+  scheduleLocalSnapshot();
   if(document.getElementById("share-modal") && document.getElementById("share-modal").classList.contains("open")) renderShareSupplierList();
 }
 function anyAccountOk(){ return driveAccounts.some(function(a){ return acctStatus[a.id]==="ok"; }); }
@@ -3219,6 +3298,7 @@ var syncRetryTimer = null;
 
 function queueSync(){
   syncDirty = true;
+  scheduleLocalSnapshot();
   updateSyncBadge();
   if(!syncInProgress) runSyncLoop();
 }
