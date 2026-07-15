@@ -437,7 +437,10 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       <button class="btn pri sm" id="scanbtn" onclick="scanCard()" disabled style="opacity:.45;margin-bottom:9px">&#128269; Read with AI</button>
       <div id="cardimgstrip" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
       <div class="div"></div>
-      <div class="fg" style="margin-bottom:8px"><label>Firm / Shop name</label><input type="text" id="sfirm" list="firmList" placeholder="e.g. Khandwal Jewellery House" autocomplete="off"><datalist id="firmList"></datalist></div>
+      <div class="fg" style="margin-bottom:8px;position:relative"><label>Firm / Shop name</label>
+        <input type="text" id="sfirm" placeholder="e.g. Khandwal Jewellery House" autocomplete="off" oninput="showFirmSuggest()" onfocus="showFirmSuggest()">
+        <div id="firmSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--sur);border:1px solid var(--bdr);border-radius:8px;box-shadow:var(--shm);max-height:180px;overflow-y:auto;z-index:50;margin-top:2px"></div>
+      </div>
       <div style="display:flex;gap:6px;margin-bottom:8px">
         <button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="importFromContacts()">&#128100; Import from Contacts</button>
         <button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="exportToContacts()">&#128190; Save to Contacts</button>
@@ -2997,13 +3000,32 @@ async function uploadPendingImages(accId, entries){
       });
     });
   });
+  var total=pending.length, done=0, failed=0, lastErr=null;
   var CONCURRENCY=4;
   for(var i=0;i<pending.length;i+=CONCURRENCY){
     var batch=pending.slice(i,i+CONCURRENCY);
     await Promise.all(batch.map(async function(p){
-      try{ var id=await driveUploadImage(accId, p.src); p.setId(id); }catch(e){ console.log("image upload failed:",e); }
+      try{
+        var id=await driveUploadImage(accId, p.src);
+        p.setId(id);
+      }catch(e){
+        failed++; lastErr=e;
+        console.log("image upload failed:",e);
+      }
+      done++;
+      if(total>1) setDP("loading","...","Uploading images "+done+"/"+total+"...");
     }));
   }
+  // Previously a failed image upload was only ever logged to the browser
+  // console - completely invisible in normal use, which is exactly how a
+  // real problem (bad token, network issue, Drive quota) could sit there
+  // silently "stuck" with nothing ever landing in Drive and no visible sign
+  // anything was wrong. Now it surfaces as a real toast, and still gets
+  // retried automatically on the next sync cycle.
+  if(failed>0){
+    toast(failed+" of "+total+" photo(s) couldn't upload"+(lastErr?": "+lastErr.message:"")+" - will retry automatically","err");
+  }
+  return {total:total, failed:failed};
 }
 
 // Builds the JSON that actually gets written to Drive for one account: strips
@@ -3073,7 +3095,23 @@ async function driveApiFetch(accId, url, options){
   options = options || {};
   options.headers = options.headers || {};
   options.headers["Authorization"] = "Bearer " + auth.token;
-  var resp = await fetch(url, options);
+  // A flaky mobile connection can leave a fetch neither succeeding nor
+  // failing for a very long time - without this, that shows as "Uploading
+  // images..." frozen on screen forever with nothing actually happening and
+  // no error to react to. 30s is generous for a single image upload but
+  // still turns a silent hang into a real, retryable failure.
+  var controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 30000) : null;
+  if(controller) options.signal = controller.signal;
+  var resp;
+  try{
+    resp = await fetch(url, options);
+  }catch(e){
+    if(e && e.name === "AbortError"){ throw new Error("Drive request timed out - check your connection and it will retry automatically"); }
+    throw e;
+  }finally{
+    if(timeoutId) clearTimeout(timeoutId);
+  }
   if(resp.status === 401){
     acctAuth[accId]=null;
     clearAcctToken(accId);
@@ -3543,6 +3581,7 @@ async function addNewDriveAccount(master){
 // the background and keeps retrying (with backoff) until it succeeds, so
 // slow networks or big files never block the next thing you want to do.
 var syncDirty = false;
+var _lastSaveErrorToast = {}; // accId -> {msg, at} - throttles the sync-failure toast so retries don't spam it
 var syncInProgress = false;
 var syncRetryDelay = 3000; // grows on repeated failures, resets on success
 var syncRetryTimer = null;
@@ -3697,6 +3736,19 @@ async function saveDr(){
     }catch(e){
       console.log("save failed for account", accId, e);
       anyFail=true;
+      // Previously this failure was only ever visible in the browser
+      // console - from the user's side, the pill just said generic "Save
+      // failed - retrying" with no reason, easy to miss, and would keep
+      // silently retrying and failing the same way indefinitely. Now the
+      // actual reason shows as a toast (throttled to once per 30s per
+      // account so a fast retry loop can't spam it).
+      var accLabel = (driveAccounts.find(function(a){return a.id===accId;})||{}).label || accId;
+      var errMsg = (e && e.message) || "Unknown error";
+      var lastToast = _lastSaveErrorToast[accId];
+      if(!lastToast || lastToast.msg!==errMsg || (Date.now()-lastToast.at)>30000){
+        toast("Sync problem on "+accLabel+": "+errMsg,"err");
+        _lastSaveErrorToast[accId] = {msg:errMsg, at:Date.now()};
+      }
     }
   }
   if(anyConflict){
@@ -3954,17 +4006,45 @@ function onShareColAllChange(){
 // Populates the datalist behind the Firm/Shop name field on the Add page so
 // typing (or just clicking the field) offers every supplier already saved
 // anywhere across all connected Drives, not just this session's entries.
+// Custom-built suggestion list for Firm/Shop name, instead of relying on
+// native <datalist> - that API is notoriously unreliable on Android/mobile
+// Chrome (especially inside an installed/standalone PWA), sometimes showing
+// an empty dropdown even with options present. This renders its own list
+// with plain elements, which works identically everywhere.
+var _allFirmNames = [];
 function renderFirmList(){
-  var dl = document.getElementById("firmList");
-  if(!dl) return;
   var names = {};
   (DB.entries||[]).forEach(function(e){
     var sup = e.supplier||{};
     var n = sup.firm || ((sup.contacts||[])[0]||{}).name;
     if(n) names[n] = true;
   });
-  dl.innerHTML = Object.keys(names).sort(function(a,b){return a.localeCompare(b);}).map(function(n){ return '<option value="'+esc(n)+'">'; }).join("");
+  _allFirmNames = Object.keys(names).sort(function(a,b){return a.localeCompare(b);});
 }
+function showFirmSuggest(){
+  var input=document.getElementById("sfirm");
+  var box=document.getElementById("firmSuggest");
+  if(!input || !box) return;
+  if(!_allFirmNames.length) renderFirmList(); // safety net in case a lifecycle refresh was missed
+  var q=input.value.trim().toLowerCase();
+  var matches=(q ? _allFirmNames.filter(function(n){ return n.toLowerCase().indexOf(q)>=0; }) : _allFirmNames).slice(0,8);
+  if(!matches.length){ box.style.display="none"; return; }
+  box.innerHTML=matches.map(function(n){
+    return '<div style="padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--bdr)" onmousedown="pickFirmSuggest(\''+n.replace(/'/g,"\\'").replace(/"/g,"&quot;")+'\')">'+esc(n)+'</div>';
+  }).join("");
+  box.style.display="block";
+}
+function pickFirmSuggest(name){
+  document.getElementById("sfirm").value=name;
+  hideFirmSuggest();
+}
+function hideFirmSuggest(){
+  var box=document.getElementById("firmSuggest");
+  if(box) box.style.display="none";
+}
+document.addEventListener("click", function(e){
+  if(e.target.id!=="sfirm" && !(e.target.closest && e.target.closest("#firmSuggest"))) hideFirmSuggest();
+});
 function renderShareSupplierList(){
   var sel = document.getElementById("shsupSel");
   if(!sel) return;
