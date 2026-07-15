@@ -2764,7 +2764,8 @@ var acctBackupFolder={};                       // accId -> PricebookBackups fold
 var acctFileModTime={};                        // accId -> last known-good Drive modifiedTime (baseline for conflict checks)
 var acctConflict={};                           // accId -> true if another device saved since we last loaded - needs manual resolve
 var acctLastSavedContent={};                   // accId -> last JSON string successfully written (skip redundant re-saves/backups)
-var acctLastSynced={};                         // accId -> Date.now() of last successful save or load
+var acctLastSynced=(function(){ try{ return JSON.parse(localStorage.getItem("pb_last_synced")||"{}"); }catch(e){ return {}; } })(); // accId -> ms timestamp of last successful save or load - persisted so it survives app restarts (this app restarts a LOT on some phones, and previously this reset to "never" every single time even right after a real successful sync)
+function saveLastSyncedPersist(){ try{ localStorage.setItem("pb_last_synced", JSON.stringify(acctLastSynced)); }catch(e){} }
 var BACKUP_FOLDER_NAME="PricebookBackups", MAX_BACKUPS_PER_ACCOUNT=10;
 var _pendingConnectId=null;
 
@@ -3225,7 +3226,7 @@ async function loadOneAccountData(accId){
   });
   dbVersion++;
   acctConflict[accId]=false;
-  acctLastSynced[accId]=Date.now();
+  acctLastSynced[accId]=Date.now(); saveLastSyncedPersist();
   var freshSlice = DB.entries.filter(function(e){ return e._acc===accId; });
   acctLastSavedContent[accId] = JSON.stringify(slimForDrive({entries:freshSlice, subs:DB.subs, items:DB.items, collections:DB.collections}));
   renderFirmList();
@@ -3532,7 +3533,7 @@ function removeDriveAccount(accId){
   clearAcctToken(accId);
   delete acctAuth[accId]; delete acctStatus[accId]; delete acctFileId[accId];
   delete acctImgFolder[accId]; delete acctBackupFolder[accId]; delete acctFileModTime[accId];
-  delete acctConflict[accId]; delete acctLastSavedContent[accId]; delete acctLastSynced[accId];
+  delete acctConflict[accId]; delete acctLastSavedContent[accId]; delete acctLastSynced[accId]; saveLastSyncedPersist();
   // Entries tagged to the removed account stay in memory for this session
   // (nothing is force-deleted), but won't be re-loaded on the next app open
   // since there's no account left to load them from.
@@ -3732,7 +3733,7 @@ async function saveDr(){
         acctFileModTime[accId] = newFile.modifiedTime;
       }
       acctLastSavedContent[accId]=content;
-      acctLastSynced[accId]=Date.now();
+      acctLastSynced[accId]=Date.now(); saveLastSyncedPersist();
     }catch(e){
       console.log("save failed for account", accId, e);
       anyFail=true;
@@ -3761,6 +3762,7 @@ async function saveDr(){
     throw new Error("One or more Drive accounts failed to save");
   }
   setDP("ok","OK", driveStatusSummary());
+  renderDriveStatus();
   toast("Saved to Google Drive","ok");
 }
 
