@@ -109,6 +109,8 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .qrow-fields{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px}
 .qrow-fields input{width:100%;padding:5px 3px;font-size:12px;border:1px solid var(--bdr);border-radius:6px;text-align:center;background:var(--sur)}
 .qrow-fields input:read-only{background:var(--sur2);color:var(--txt3)}
+.qnote{padding:6px 8px;font-size:12px;border:1px solid var(--bdr);border-radius:6px;background:var(--sur);color:var(--txt);text-align:left}
+.qnote:focus{outline:none;border-color:var(--brand)}
 .qrow-actions{display:flex;align-items:center;gap:5px;margin-top:5px}
 .qicon{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bdr);border-radius:6px;background:var(--sur2);cursor:pointer;font-size:13px;flex-shrink:0}
 .qthumbbadge{display:none;align-items:center;font-size:11px;padding:3px 8px;border-radius:10px;background:var(--brand-l);color:var(--brand-d);cursor:pointer;white-space:nowrap}
@@ -1178,20 +1180,33 @@ function renderQuickTable(id,m,sm){
   wireQuickTable(id,wrap);
 }
 
+// Shared numeric-field sanitizer. Wastage is the one field that can
+// legitimately be negative (a discount/adjustment), so it's the only one
+// that keeps a leading "-" if typed; everything else strips it.
+function sanitizeNumInput(el, allowMinus){
+  var v=el.value;
+  var neg=allowMinus && v.trim().charAt(0)==="-";
+  v=v.replace(/[^0-9.]/g,"");
+  var parts=v.split(".");
+  if(parts.length>2) v=parts[0]+"."+parts.slice(1).join("");
+  el.value=(neg?"-":"")+v;
+}
 function wireQuickTable(id,wrap){
-  wrap.querySelectorAll(".qmel,.qwst,.qlab").forEach(function(inp){
+  wrap.querySelectorAll(".qmel,.qlab").forEach(function(inp){
     inp.oninput=function(){
-      this.value=this.value.replace(/[^0-9.]/g,"");
-      var parts=this.value.split(".");
-      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
+      sanitizeNumInput(this, false);
+      qCalcTunch(this.getAttribute("data-key"));
+    };
+  });
+  wrap.querySelectorAll(".qwst").forEach(function(inp){
+    inp.oninput=function(){
+      sanitizeNumInput(this, true);
       qCalcTunch(this.getAttribute("data-key"));
     };
   });
   wrap.querySelectorAll(".qrate").forEach(function(inp){
     inp.oninput=function(){
-      this.value=this.value.replace(/[^0-9.]/g,"");
-      var parts=this.value.split(".");
-      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
+      sanitizeNumInput(this, false);
     };
   });
   wrap.querySelectorAll("[data-qcam]").forEach(function(btn){
@@ -2265,25 +2280,11 @@ function startInfoEdit(){
     document.getElementById("ieTun").value = wst==="" ? "" : (mel+(parseFloat(wst)||0)).toFixed(2);
   };
   if(isRateMaster(meta.master)){
-    document.getElementById("ieRate").oninput=function(){
-      this.value=this.value.replace(/[^0-9.]/g,"");
-      var parts=this.value.split(".");
-      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
-    };
+    document.getElementById("ieRate").oninput=function(){ sanitizeNumInput(this, false); };
   } else {
-    ["ieMel","ieWst"].forEach(function(id){
-      document.getElementById(id).oninput=function(){
-        this.value=this.value.replace(/[^0-9.]/g,"");
-        var parts=this.value.split(".");
-        if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
-        recalc();
-      };
-    });
-    document.getElementById("ieLab").oninput=function(){
-      this.value=this.value.replace(/[^0-9.]/g,"");
-      var parts=this.value.split(".");
-      if(parts.length>2) this.value=parts[0]+"."+parts.slice(1).join("");
-    };
+    document.getElementById("ieMel").oninput=function(){ sanitizeNumInput(this, false); recalc(); };
+    document.getElementById("ieWst").oninput=function(){ sanitizeNumInput(this, true); recalc(); };
+    document.getElementById("ieLab").oninput=function(){ sanitizeNumInput(this, false); };
   }
 }
 
