@@ -307,6 +307,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
         <span style="font-size:11px;color:var(--txt3)">Green dot = connected. Tap a name to make it the active upload target for that master.</span>
       </div>
       <button type="button" class="btn xs ghost" style="margin-bottom:10px" onclick="syncDrive()">&#8635; Reconnect / refresh all</button>
+      <button type="button" class="btn xs ghost" style="margin-bottom:10px;margin-left:6px" onclick="clearImageCache()">&#128465; Clear Cached Photos</button>
       <div id="drivesBody"></div>
     </div>
   </div>
@@ -1158,11 +1159,12 @@ function renderQuickTable(id,m,sm){
       h+='<input type="text" inputmode="decimal" class="qrate" placeholder="Rate" data-key="'+key+'" maxlength="8">';
     } else {
       h+='<input type="text" inputmode="decimal" class="qmel" placeholder="Melting" value="92" data-key="'+key+'" maxlength="4">';
-      h+='<input type="text" inputmode="decimal" class="qwst" placeholder="Wastage" data-key="'+key+'" maxlength="4">';
+      h+='<input type="text" inputmode="decimal" class="qwst" placeholder="Wastage" data-key="'+key+'" maxlength="6">';
       h+='<input type="text" class="qtun" placeholder="Tunch" data-key="'+key+'" readonly>';
       h+='<input type="text" inputmode="decimal" class="qlab" placeholder="Labour" data-key="'+key+'" maxlength="5">';
     }
     h+='</div>';
+    h+='<input type="text" class="qnote" placeholder="Remarks (optional)" data-key="'+key+'" maxlength="120" style="width:100%;margin-top:5px">';
     h+='<div class="qrow-actions">';
     h+='<button type="button" class="qicon" data-qcam="'+key+'" title="Camera - take multiple photos">&#128247;</button>';
     h+='<label class="qicon" title="Gallery" style="cursor:pointer"><input type="file" accept="image/*,video/*" multiple data-qgal="'+key+'" style="display:none">&#128444;</label>';
@@ -1757,24 +1759,25 @@ function colItems(){
         var key=row.getAttribute("data-key");
         var hasPhotos=(qImgs[key]||[]).length>0;
         var nm=row.querySelector(".qrow-name span").textContent;
+        var remarks=row.querySelector(".qnote").value.trim();
         if(rateMode){
           var rate=row.querySelector(".qrate").value.trim();
-          if(!rate && !hasPhotos) return;
+          if(!rate && !hasPhotos && !remarks) return;
           items.push({
-            master:m, submaster:sm, itemName:nm, date:date, notes:"",
+            master:m, submaster:sm, itemName:nm, date:date, notes:remarks,
             stars:qStars[key]||0, images:[].concat(qImgs[key]||[]),
             rate:rate, melting:"", wastage:"", tunch:"", labour:"", meltingVerified:false
           });
         } else {
           var wst=row.querySelector(".qwst").value.trim();
           var lab=row.querySelector(".qlab").value.trim();
-          if(!wst && !lab && !hasPhotos) return;
+          if(!wst && !lab && !hasPhotos && !remarks) return;
           items.push({
             master:m,
             submaster:sm,
             itemName:nm,
             date:date,
-            notes:"",
+            notes:remarks,
             stars:qStars[key]||0,
             images:[].concat(qImgs[key]||[]),
             melting:row.querySelector(".qmel").value.trim(),
@@ -1989,7 +1992,7 @@ var _catTreeCache=null,_catTreeCacheKey=null;
 function buildCatTree(){
   var key=dbVersion+"|"+(catMaster||"")+"|"+(catCollection||"");
   if(_catTreeCache && _catTreeCacheKey===key) return _catTreeCache;
-  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
+  var tree={};DB.entries.forEach(function(e){var sup=e.supplier||{};var sN=sup.firm||((sup.contacts||[])[0]||{}).name||"?";(e.items||[]).forEach(function(it,ii){if(catMaster&&it.master!==catMaster)return;var sm=it.submaster||"Other",itN=it.itemName||"Unnamed";(it.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN,submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",notes:it.notes||"",date:it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI});});(it.grades||[]).forEach(function(g){(g.images||[]).forEach(function(img,imgI){var src=typeof img==="string"?img:img.src;var stars=typeof img==="object"?(img.stars||0):0;var mt=typeof img==="object"?(img.type||"image"):"image";var col=typeof img==="object"?(img.collection||""):"";if(catCollection && col!==catCollection)return;if(!tree[sm])tree[sm]={};if(!tree[sm][itN])tree[sm][itN]=[];tree[sm][itN].push({src:src,stars:stars,mediaType:mt,itemName:itN+" ("+g.colour+" "+g.clarity+")",submaster:sm,master:it.master,collection:col,supName:sN,tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",notes:it.notes||"",date:g.date||it.date||"",meltingVerified:it.meltingVerified||false,entryId:e.id,itemIdx:ii,imgIdx:imgI,isGrade:true});});});});});
   _catTreeCache=tree;_catTreeCacheKey=key;
   return tree;
 }
@@ -2216,6 +2219,7 @@ function toggleInfo(){
     rows.push({l:"Tunch",v:meta.tunch||"--"});
     rows.push({l:"Labour",v:meta.labour||"--"});
   }
+  rows.push({l:"Remarks",v:meta.notes||"--"});
   rows.push({l:"Image Stars",v:(meta.stars||0)+" star"+(meta.stars===1?"":"s")});
   document.getElementById("inforows").innerHTML=rows.map(function(r){return'<div class="inforow"><div class="infolbl">'+r.l+'</div><div class="infoval">'+esc(String(r.v))+"</div></div>";}).join("");
   var editWrap=document.getElementById("infoeditwrap");
@@ -2244,11 +2248,12 @@ function startInfoEdit(){
     '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Rate</label><input type="text" inputmode="decimal" id="ieRate" value="'+esc(meta.rate||"")+'" maxlength="8" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'
   ) : (
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Melting</label><input type="text" inputmode="decimal" id="ieMel" value="'+esc(meta.melting||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
-    '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Wastage</label><input type="text" inputmode="decimal" id="ieWst" value="'+esc(meta.wastage||"")+'" maxlength="4" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
+    '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Wastage</label><input type="text" inputmode="decimal" id="ieWst" value="'+esc(meta.wastage||"")+'" maxlength="6" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'+
     '<div class="fg" style="margin-bottom:6px"><label style="color:var(--txt2)">Tunch (auto)</label><input type="text" id="ieTun" value="'+esc(meta.tunch||"")+'" readonly style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur2);color:var(--txt3)"></div>'+
     '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Labour</label><input type="text" inputmode="decimal" id="ieLab" value="'+esc(meta.labour||"")+'" maxlength="5" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>'
   );
-  editWrap.innerHTML=colField+priceFields+
+  var notesField = '<div class="fg" style="margin-bottom:10px"><label style="color:var(--txt2)">Remarks</label><input type="text" id="ieNotes" value="'+esc(meta.notes||"")+'" maxlength="120" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--bdr);background:var(--sur);color:var(--txt)"></div>';
+  editWrap.innerHTML=colField+priceFields+notesField+
     '<div style="display:flex;gap:8px">'+
     '<button type="button" class="btn sm ghost" style="flex:1;justify-content:center" onclick="toggleInfo();toggleInfo();">Cancel</button>'+
     '<button type="button" class="btn sm pri" style="flex:1;justify-content:center" onclick="saveInfoEdit()">Save</button>'+
@@ -2315,6 +2320,9 @@ function saveInfoEdit(){
     // keep the in-memory lightbox meta and the catalogue's cache in sync too
     meta.melting=mel; meta.wastage=wst; meta.tunch=tun; meta.labour=lab;
   }
+  var notesVal=document.getElementById("ieNotes").value.trim();
+  it.notes=notesVal;
+  meta.notes=notesVal;
   var colSel=document.getElementById("ieCol");
   if(colSel && !meta.isGrade && meta.imgIdx!==undefined && it.images && it.images[meta.imgIdx]){
     var newCol=colSel.value;
@@ -2433,8 +2441,8 @@ function openBrEdit(entryId, itemIdx){
   var imgs=(it.images||[]);
   var srcs = imgs.length ? imgs.map(function(im){return typeof im==="string"?im:im.src;}) : [""];
   var metas = imgs.length ? imgs.map(function(im){
-    return {itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",master:it.master,meltingVerified:it.meltingVerified||false,stars:(typeof im==="object"?im.stars:0)||0,mediaType:(typeof im==="object"?im.type:"image")||"image",entryId:entryId,itemIdx:itemIdx};
-  }) : [{itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",master:it.master,meltingVerified:it.meltingVerified||false,stars:0,entryId:entryId,itemIdx:itemIdx}];
+    return {itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",notes:it.notes||"",master:it.master,meltingVerified:it.meltingVerified||false,stars:(typeof im==="object"?im.stars:0)||0,mediaType:(typeof im==="object"?im.type:"image")||"image",entryId:entryId,itemIdx:itemIdx};
+  }) : [{itemName:it.itemName,supName:supName,date:it.date||"",tunch:it.tunch||"",wastage:it.wastage||"",melting:it.melting||"",labour:it.labour||"",rate:it.rate||"",notes:it.notes||"",master:it.master,meltingVerified:it.meltingVerified||false,stars:0,entryId:entryId,itemIdx:itemIdx}];
   openLB(srcs, metas, 0);
   toggleInfo();
   startInfoEdit();
@@ -3427,6 +3435,35 @@ function openDrivesModal(){
 function closeDrivesModal(){
   var m=document.getElementById("drives-modal");
   if(m) m.classList.remove("open");
+}
+// Frees up on-device storage by clearing the local photo cache
+// (pbimgcache). Safe by design: it only ever removes copies of photos that
+// already have a .driveId (confirmed uploaded to Drive) - anything not yet
+// synced is refused rather than risked, since that's the one copy that
+// still only exists on this device. Cleared photos simply re-download from
+// Drive the next time they're viewed - nothing is deleted from Drive itself.
+async function clearImageCache(){
+  var pendingCount=0;
+  DB.entries.forEach(function(e){
+    (e.items||[]).forEach(function(it){
+      (it.images||[]).forEach(function(img){ if(img && typeof img==="object" && img.src && !img.driveId) pendingCount++; });
+      (it.grades||[]).forEach(function(g){ (g.images||[]).forEach(function(img){ if(img && typeof img==="object" && img.src && !img.driveId) pendingCount++; }); });
+    });
+  });
+  if(pendingCount>0){
+    toast(pendingCount+" photo(s) haven't finished uploading yet - wait for sync to finish (check Manage Drives) before clearing cache","err");
+    return;
+  }
+  if(!confirm("Clear cached photos from this device? They'll safely re-download from Drive the next time you view them - nothing is deleted from Drive itself.")) return;
+  try{
+    var db=await idbOpen();
+    var tx=db.transaction("imgs","readwrite");
+    tx.objectStore("imgs").clear();
+    imgCache={};
+    toast("Cached photos cleared - they'll re-download from Drive as needed","ok");
+  }catch(e){
+    toast("Couldn't clear cache: "+e.message,"err");
+  }
 }
 function acctStatusDot(id){
   var s=acctStatus[id];
