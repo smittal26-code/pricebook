@@ -622,8 +622,52 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <button class="btn wa sm" onclick="waShareCur()">&#128247; Share Image</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="toggleInfo()">&#128203; Details</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openCropModal()">&#9986; Crop</button>
+    <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openTxtModal()">&#128221; Text</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="dlCur()">Save</button>
     <button class="btn sm dan" onclick="deleteCurImg()">&#128465; Delete</button>
+  </div>
+</div>
+
+<!-- Replace Text on Photo - free, no-AI approach: box the old text, sample
+     the background color around it, paint over the box with that color,
+     then draw the new text on top. Works well for text sitting on a solid
+     watermark bar; won't look seamless on a busy/photographic background. -->
+<div class="mbg" id="txt-modal" style="z-index:10001">
+  <div class="modal" style="max-width:520px;background:#111">
+    <div class="mhead" style="border-color:#333"><h3 style="color:#fff">&#128221; Replace Text on Photo</h3><button class="btn xs dan" onclick="closeTxtModal()">X</button></div>
+    <div class="mbody" style="padding:10px">
+      <div id="txtStage" style="position:relative;width:100%;height:50vh;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;touch-action:none">
+        <img id="txtImg" style="max-width:100%;max-height:50vh;display:block;user-select:none;-webkit-user-drag:none">
+        <div id="txtBox" style="position:absolute;border:2px dashed #fff;cursor:move">
+          <div class="txt-handle" data-h="nw" style="position:absolute;left:-8px;top:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nwse-resize"></div>
+          <div class="txt-handle" data-h="ne" style="position:absolute;right:-8px;top:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nesw-resize"></div>
+          <div class="txt-handle" data-h="sw" style="position:absolute;left:-8px;bottom:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nesw-resize"></div>
+          <div class="txt-handle" data-h="se" style="position:absolute;right:-8px;bottom:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nwse-resize"></div>
+        </div>
+      </div>
+      <div class="fg" style="margin:8px 0 6px"><label style="color:#ccc;font-size:11px">Find text automatically (optional)</label>
+        <div class="irow">
+          <input type="text" id="txtFindWhat" placeholder="e.g. Shilpi Jewellers - leave blank for 'most obvious text'" style="flex:1;padding:8px;border-radius:6px;border:1px solid #555;background:#222;color:#fff">
+          <button type="button" class="btn sm ghost" style="color:#fff;border-color:#555;white-space:nowrap" onclick="autoDetectTextBox()" id="autoDetectBtn">&#10024; Auto-Detect</button>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#999;margin:6px 0 10px">Or just drag the box yourself - works best when the text sits on a solid-color bar/watermark</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div class="fg" style="flex:1;margin-bottom:0"><label style="color:#ccc;font-size:11px">Background color</label>
+          <input type="color" id="txtBgColor" value="#000000" style="width:100%;height:34px;border-radius:6px;border:1px solid #555;background:none;padding:2px">
+        </div>
+        <div class="fg" style="flex:1;margin-bottom:0"><label style="color:#ccc;font-size:11px">Text color</label>
+          <input type="color" id="txtColor" value="#ffffff" style="width:100%;height:34px;border-radius:6px;border:1px solid #555;background:none;padding:2px">
+        </div>
+      </div>
+      <div class="fg" style="margin-bottom:10px"><label style="color:#ccc;font-size:11px">New text (leave blank to just erase)</label>
+        <input type="text" id="txtNewText" placeholder="e.g. SK Jewellers" maxlength="60" style="width:100%;padding:8px;border-radius:6px;border:1px solid #555;background:#222;color:#fff">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn sm ghost" style="flex:1;justify-content:center;color:#fff;border-color:#555" onclick="closeTxtModal()">Cancel</button>
+        <button type="button" class="btn sm pri" style="flex:1;justify-content:center" onclick="applyTextReplace()">Apply</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2564,6 +2608,276 @@ async function applyCrop(){
       // path) - simplest safe undo is to mark the original content dirty
       // again and let it sync normally, rather than risk racing the
       // in-flight upload by reusing the old file id.
+      delete imgObj.driveId;
+      queueSync();
+    }
+    dbVersion++;
+    lbImgs[lbIdx]=originalSrc;
+    loadLBImg(lbIdx);
+    renderCat();
+    var brres2=document.getElementById("brres"); if(brres2) renderBr();
+  });
+}
+
+// ===== Replace Text on Photo (free, no AI) =====
+// Paints a solid-color box over the old text (sampled from the surrounding
+// background) and draws new text on top. This works well when the text
+// sits on a flat-color watermark bar - the common case for supplier photo
+// watermarks/labels - but won't blend seamlessly into a busy/photographic
+// background, since there's no actual image understanding here, just a
+// color sample + fill. Same in-place Drive update + Undo pattern as Crop.
+var _txtDrag=null;
+
+function openTxtModal(){
+  var meta=lbMeta[lbIdx];
+  var src=lbImgs[lbIdx];
+  if(!meta || !src){ toast("Nothing to edit","err"); return; }
+  if(meta.mediaType==="video"){ toast("Text replace only works on photos, not videos","err"); return; }
+  if(meta.isGrade){ toast("Not supported for diamond grade photos yet","err"); return; }
+  var imgEl=document.getElementById("txtImg");
+  imgEl.src=src;
+  document.getElementById("txtNewText").value="";
+  document.getElementById("txt-modal").classList.add("open");
+  var onReady=function(){ initTxtBox(); autoSampleColor(); };
+  if(imgEl.complete && imgEl.naturalWidth) onReady();
+  else imgEl.onload=onReady;
+}
+function initTxtBox(){
+  var imgEl=document.getElementById("txtImg");
+  var stage=document.getElementById("txtStage");
+  var rect=imgEl.getBoundingClientRect();
+  var stageRect=stage.getBoundingClientRect();
+  var left=rect.left-stageRect.left, top=rect.top-stageRect.top;
+  var w=rect.width, h=rect.height;
+  var boxW=w*0.6, boxH=h*0.15;
+  var box=document.getElementById("txtBox");
+  box.style.left=(left+(w-boxW)/2)+"px";
+  box.style.top=(top+h*0.75)+"px"; // near the bottom by default - the usual watermark spot
+  box.style.width=boxW+"px";
+  box.style.height=boxH+"px";
+  box.dataset.imgLeft=left; box.dataset.imgTop=top; box.dataset.imgW=w; box.dataset.imgH=h;
+}
+function closeTxtModal(){
+  document.getElementById("txt-modal").classList.remove("open");
+  document.getElementById("txtImg").onload=null;
+}
+document.addEventListener("pointerdown", function(e){
+  var modal=document.getElementById("txt-modal");
+  if(!modal || !modal.classList.contains("open")) return;
+  var box=document.getElementById("txtBox");
+  var handle=e.target.closest && e.target.closest(".txt-handle");
+  if(!handle && e.target!==box) return;
+  e.preventDefault();
+  _txtDrag={
+    mode: handle ? handle.getAttribute("data-h") : "move",
+    startX:e.clientX, startY:e.clientY,
+    boxStart:{left:parseFloat(box.style.left),top:parseFloat(box.style.top),width:parseFloat(box.style.width),height:parseFloat(box.style.height)}
+  };
+});
+document.addEventListener("pointermove", function(e){
+  if(!_txtDrag) return;
+  var box=document.getElementById("txtBox");
+  var dx=e.clientX-_txtDrag.startX, dy=e.clientY-_txtDrag.startY;
+  var imgLeft=parseFloat(box.dataset.imgLeft), imgTop=parseFloat(box.dataset.imgTop), imgW=parseFloat(box.dataset.imgW), imgH=parseFloat(box.dataset.imgH);
+  var b=Object.assign({}, _txtDrag.boxStart);
+  if(_txtDrag.mode==="move"){
+    b.left+=dx; b.top+=dy;
+  } else {
+    if(_txtDrag.mode.indexOf("n")>=0){ b.top+=dy; b.height-=dy; }
+    if(_txtDrag.mode.indexOf("s")>=0){ b.height+=dy; }
+    if(_txtDrag.mode.indexOf("w")>=0){ b.left+=dx; b.width-=dx; }
+    if(_txtDrag.mode.indexOf("e")>=0){ b.width+=dx; }
+  }
+  b.width=Math.max(20,b.width); b.height=Math.max(14,b.height);
+  b.left=Math.max(imgLeft, Math.min(b.left, imgLeft+imgW-b.width));
+  b.top=Math.max(imgTop, Math.min(b.top, imgTop+imgH-b.height));
+  if(b.left+b.width > imgLeft+imgW) b.width = imgLeft+imgW-b.left;
+  if(b.top+b.height > imgTop+imgH) b.height = imgTop+imgH-b.top;
+  box.style.left=b.left+"px"; box.style.top=b.top+"px"; box.style.width=b.width+"px"; box.style.height=b.height+"px";
+  autoSampleColor();
+});
+document.addEventListener("pointerup", function(){ _txtDrag=null; });
+
+// Samples the pixel just to the left of the selected box to guess the fill
+// color, and auto-picks a contrasting text color (black or white) against
+// it. Only a starting point - both colors stay manually adjustable.
+function autoSampleColor(){
+  try{
+    var imgEl=document.getElementById("txtImg");
+    var box=document.getElementById("txtBox");
+    if(!imgEl.naturalWidth) return;
+    var imgLeft=parseFloat(box.dataset.imgLeft), imgTop=parseFloat(box.dataset.imgTop), imgW=parseFloat(box.dataset.imgW);
+    var scaleX=imgEl.naturalWidth/imgW, scaleY=imgEl.naturalHeight/parseFloat(box.dataset.imgH);
+    var bLeft=parseFloat(box.style.left), bTop=parseFloat(box.style.top);
+    var sx=Math.max(0,(bLeft-imgLeft-4)*scaleX);
+    var sy=(bTop-imgTop+parseFloat(box.style.height)/2)*scaleY;
+    var canvas=document.createElement("canvas");
+    canvas.width=imgEl.naturalWidth; canvas.height=imgEl.naturalHeight;
+    canvas.getContext("2d").drawImage(imgEl,0,0);
+    var px=canvas.getContext("2d").getImageData(Math.min(sx,canvas.width-1), Math.min(sy,canvas.height-1), 1, 1).data;
+    var hex="#"+[px[0],px[1],px[2]].map(function(v){return v.toString(16).padStart(2,"0");}).join("");
+    document.getElementById("txtBgColor").value=hex;
+    var brightness=(px[0]*299+px[1]*587+px[2]*114)/1000;
+    document.getElementById("txtColor").value = brightness>140 ? "#000000" : "#ffffff";
+  }catch(e){ /* non-fatal - manual color pickers still work either way */ }
+}
+
+// ===== AI-assisted box detection (free) =====
+// Uses the same Gemini proxy as the visiting-card scan - Gemini 2.5 Flash's
+// free tier, plain text+vision, NOT an image-generation call - so this
+// costs nothing extra. Gemini is asked only for a bounding box (a small
+// JSON object), never to redraw the image itself; the actual erase/replace
+// still happens locally on canvas exactly as before. This is a convenience
+// on top of the manual box - accuracy varies, so the box stays fully
+// draggable/resizable afterward for a quick correction.
+async function detectTextBoxAI(dataUrl, targetText){
+  if(!GEMINI_PROXY_URL || GEMINI_PROXY_URL.indexOf("PASTE_YOUR") === 0){
+    throw new Error("AI proxy not set up yet");
+  }
+  var base64=dataUrl.split(",")[1];
+  var mime=dataUrl.split(";")[0].split(":")[1];
+  var promptText = targetText && targetText.trim()
+    ? 'Find the exact text "'+targetText.trim()+'" written on this image.'
+    : 'Find the most prominent standalone text label, stamp, or watermark written on this image (e.g. a shop/firm name or price tag printed over the photo) - not text that is part of the jewellery design itself.';
+  promptText += ' Return ONLY valid JSON, no markdown, no code fences, in this exact shape: {"found":true,"box_2d":[ymin,xmin,ymax,xmax]} where all four numbers are integers from 0 to 1000 (normalized bounding box coordinates - your standard object detection format). If you cannot find any such text, return {"found":false}.';
+
+  var resp = await fetch(GEMINI_PROXY_URL, {
+    method: "POST",
+    headers: {"Content-Type": "text/plain"}, // avoids CORS preflight on Apps Script, same as the card scan call
+    body: JSON.stringify({
+      model: "gemini-2.5-flash",
+      contents: [{parts: [
+        {inline_data: {mime_type: mime, data: base64}},
+        {text: promptText}
+      ]}]
+    })
+  });
+  var data = await resp.json();
+  if(data.error) throw new Error((data.error.code||"")+" "+(data.error.status||"")+": "+data.error.message);
+  var text = data.candidates && data.candidates[0] && data.candidates[0].content &&
+             data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+             data.candidates[0].content.parts[0].text;
+  if(!text) throw new Error("No response from AI");
+  var match = text.match(/\{[\s\S]*\}/);
+  if(!match) throw new Error("Couldn't parse AI response");
+  var parsed = JSON.parse(match[0]);
+  if(!parsed.found || !parsed.box_2d || parsed.box_2d.length!==4) return null;
+  return parsed.box_2d; // [ymin, xmin, ymax, xmax], each 0-1000
+}
+
+async function autoDetectTextBox(){
+  var imgEl=document.getElementById("txtImg");
+  if(!imgEl.naturalWidth){ toast("Image still loading, try again in a second","err"); return; }
+  var btn=document.getElementById("autoDetectBtn");
+  btn.disabled=true; btn.textContent="Finding...";
+  try{
+    var box2d = await detectTextBoxAI(imgEl.src, document.getElementById("txtFindWhat").value);
+    if(!box2d){
+      toast("Couldn't find that text automatically - drag the box yourself","err");
+      return;
+    }
+    // box_2d is [ymin,xmin,ymax,xmax] on a 0-1000 scale, normalized against
+    // the WHOLE image regardless of its actual pixel size - so it maps
+    // directly onto the displayed (CSS) image dimensions already tracked
+    // for the manual box, no extra scaling math needed.
+    var box=document.getElementById("txtBox");
+    var imgLeft=parseFloat(box.dataset.imgLeft), imgTop=parseFloat(box.dataset.imgTop), imgW=parseFloat(box.dataset.imgW), imgH=parseFloat(box.dataset.imgH);
+    var ymin=box2d[0]/1000, xmin=box2d[1]/1000, ymax=box2d[2]/1000, xmax=box2d[3]/1000;
+    var x1=imgLeft+xmin*imgW, y1=imgTop+ymin*imgH, x2=imgLeft+xmax*imgW, y2=imgTop+ymax*imgH;
+    // small padding around the detected box so paint-over fully covers the text edges
+    var padX=(x2-x1)*0.06, padY=(y2-y1)*0.15;
+    x1-=padX; x2+=padX; y1-=padY; y2+=padY;
+    x1=Math.max(imgLeft,x1); y1=Math.max(imgTop,y1);
+    x2=Math.min(imgLeft+imgW,x2); y2=Math.min(imgTop+imgH,y2);
+    box.style.left=x1+"px"; box.style.top=y1+"px";
+    box.style.width=Math.max(20,x2-x1)+"px"; box.style.height=Math.max(14,y2-y1)+"px";
+    autoSampleColor();
+    toast("Found it - adjust the box if needed, then Apply","ok");
+  }catch(err){
+    toast("AI error: "+err.message,"err");
+  } finally {
+    btn.disabled=false; btn.innerHTML="&#10024; Auto-Detect";
+  }
+}
+
+async function applyTextReplace(){
+  var meta=lbMeta[lbIdx];
+  if(!meta || meta.entryId===undefined){ toast("Can't edit this image","err"); return; }
+  var newText=document.getElementById("txtNewText").value.trim();
+  var e=DB.entries.find(function(x){return x.id===meta.entryId;});
+  if(!e || !e.items[meta.itemIdx] || !e.items[meta.itemIdx].images){ toast("Couldn't find that saved item","err"); return; }
+  var arr=e.items[meta.itemIdx].images;
+  var idx=meta.imgIdx;
+  if(idx===undefined || !arr[idx]){ toast("Image not found","err"); return; }
+
+  var box=document.getElementById("txtBox");
+  var imgLeft=parseFloat(box.dataset.imgLeft), imgTop=parseFloat(box.dataset.imgTop), imgW=parseFloat(box.dataset.imgW), imgH=parseFloat(box.dataset.imgH);
+  var bLeft=parseFloat(box.style.left), bTop=parseFloat(box.style.top), bWidth=parseFloat(box.style.width), bHeight=parseFloat(box.style.height);
+  var imgEl=document.getElementById("txtImg");
+  var scaleX=imgEl.naturalWidth/imgW, scaleY=imgEl.naturalHeight/imgH;
+  var sx=(bLeft-imgLeft)*scaleX, sy=(bTop-imgTop)*scaleY, sw=bWidth*scaleX, sh=bHeight*scaleY;
+
+  var canvas=document.createElement("canvas");
+  canvas.width=imgEl.naturalWidth; canvas.height=imgEl.naturalHeight;
+  var ctx=canvas.getContext("2d");
+  ctx.drawImage(imgEl,0,0);
+  ctx.fillStyle=document.getElementById("txtBgColor").value;
+  ctx.fillRect(sx,sy,sw,sh);
+  if(newText){
+    ctx.fillStyle=document.getElementById("txtColor").value;
+    var fontSize=Math.max(10, Math.round(sh*0.6));
+    ctx.font="bold "+fontSize+"px Arial";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    while(ctx.measureText(newText).width > sw*0.92 && fontSize>8){
+      fontSize--; ctx.font="bold "+fontSize+"px Arial";
+    }
+    ctx.fillText(newText, sx+sw/2, sy+sh/2);
+  }
+  var editedDataUrl=canvas.toDataURL("image/jpeg", 0.85);
+
+  var imgObj=arr[idx];
+  if(typeof imgObj!=="object"){ imgObj={src:imgObj,stars:0,type:"image"}; arr[idx]=imgObj; }
+  var originalSrc=imgObj.src;
+  var oldDriveId=imgObj.driveId;
+  var accId=e._acc;
+
+  closeTxtModal();
+  toast("Updating photo...","info");
+
+  var driveUpdatedInPlace=false;
+  if(oldDriveId && accId && acctAuth[accId] && acctAuth[accId].token){
+    try{
+      await driveUpdateImageContent(accId, oldDriveId, editedDataUrl);
+      imgObj.src=editedDataUrl;
+      driveUpdatedInPlace=true;
+      toast("Photo updated on Drive","ok");
+    }catch(err){
+      console.log("in-place text-replace update failed, falling back to re-upload:", err);
+      imgObj.src=editedDataUrl;
+      delete imgObj.driveId;
+      queueSync();
+      driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/"+oldDriveId, {method:"DELETE"}).catch(function(){});
+      toast("Photo updated - saving to Drive shortly","ok");
+    }
+  } else {
+    imgObj.src=editedDataUrl;
+    if(oldDriveId) delete imgObj.driveId;
+    queueSync();
+    toast("Photo updated","ok");
+  }
+
+  dbVersion++;
+  lbImgs[lbIdx]=editedDataUrl;
+  loadLBImg(lbIdx);
+  renderCat();
+  var brres=document.getElementById("brres"); if(brres) renderBr();
+
+  showUndoBar(newText ? "Text replaced" : "Text erased", function(){
+    imgObj.src=originalSrc;
+    if(driveUpdatedInPlace && oldDriveId && accId){
+      driveUpdateImageContent(accId, oldDriveId, originalSrc).catch(function(e2){ console.log("undo text replace: drive restore failed", e2); });
+    } else {
       delete imgObj.driveId;
       queueSync();
     }
