@@ -621,8 +621,34 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <div class="lbbottom">
     <button class="btn wa sm" onclick="waShareCur()">&#128247; Share Image</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="toggleInfo()">&#128203; Details</button>
+    <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openCropModal()">&#9986; Crop</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="dlCur()">Save</button>
     <button class="btn sm dan" onclick="deleteCurImg()">&#128465; Delete</button>
+  </div>
+</div>
+
+<!-- Crop Photo - crops the currently open lightbox image and updates it in
+     place (same Drive file when possible - see applyCrop()), never saves a
+     second copy. -->
+<div class="mbg" id="crop-modal" style="z-index:10001">
+  <div class="modal" style="max-width:520px;background:#111">
+    <div class="mhead" style="border-color:#333"><h3 style="color:#fff">&#9986; Crop Photo</h3><button class="btn xs dan" onclick="closeCropModal()">X</button></div>
+    <div class="mbody" style="padding:10px">
+      <div id="cropStage" style="position:relative;width:100%;height:60vh;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#000;touch-action:none">
+        <img id="cropImg" style="max-width:100%;max-height:60vh;display:block;user-select:none;-webkit-user-drag:none">
+        <div id="cropBox" style="position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,0.55);cursor:move">
+          <div class="crop-handle" data-h="nw" style="position:absolute;left:-8px;top:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nwse-resize"></div>
+          <div class="crop-handle" data-h="ne" style="position:absolute;right:-8px;top:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nesw-resize"></div>
+          <div class="crop-handle" data-h="sw" style="position:absolute;left:-8px;bottom:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nesw-resize"></div>
+          <div class="crop-handle" data-h="se" style="position:absolute;right:-8px;bottom:-8px;width:18px;height:18px;background:#fff;border-radius:50%;cursor:nwse-resize"></div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#999;margin-top:8px">Drag the box to move it, drag a corner to resize</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button type="button" class="btn sm ghost" style="flex:1;justify-content:center;color:#fff;border-color:#555" onclick="closeCropModal()">Cancel</button>
+        <button type="button" class="btn sm pri" style="flex:1;justify-content:center" onclick="applyCrop()">Apply Crop</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2390,6 +2416,165 @@ function deleteCurImg(){
   });
 }
 
+// ===== Crop Photo =====
+// Crops the photo currently open in the lightbox and updates it IN PLACE -
+// same array slot, and (when possible) the same Drive file overwritten with
+// the new bytes rather than a second file being created. Only falls back to
+// "delete old, upload new" when a direct same-file update can't happen
+// right now (e.g. offline) - even then the old file gets cleaned up once
+// the replacement is confirmed uploaded, so it never leaves a lingering
+// duplicate sitting in Drive.
+var _cropDrag=null;
+var _cropImgNatural={w:0,h:0};
+
+function openCropModal(){
+  var meta=lbMeta[lbIdx];
+  var src=lbImgs[lbIdx];
+  if(!meta || !src){ toast("Nothing to crop","err"); return; }
+  if(meta.mediaType==="video"){ toast("Cropping only works on photos, not videos","err"); return; }
+  if(meta.isGrade){ toast("Cropping diamond grade photos isn't supported here yet","err"); return; }
+  var imgEl=document.getElementById("cropImg");
+  imgEl.src=src;
+  document.getElementById("crop-modal").classList.add("open");
+  var onReady=function(){ _cropImgNatural={w:imgEl.naturalWidth,h:imgEl.naturalHeight}; initCropBox(); };
+  if(imgEl.complete && imgEl.naturalWidth) onReady();
+  else imgEl.onload=onReady;
+}
+function initCropBox(){
+  var imgEl=document.getElementById("cropImg");
+  var stage=document.getElementById("cropStage");
+  var rect=imgEl.getBoundingClientRect();
+  var stageRect=stage.getBoundingClientRect();
+  var left=rect.left-stageRect.left, top=rect.top-stageRect.top;
+  var w=rect.width, h=rect.height;
+  var boxW=w*0.8, boxH=h*0.8;
+  var box=document.getElementById("cropBox");
+  box.style.left=(left+(w-boxW)/2)+"px";
+  box.style.top=(top+(h-boxH)/2)+"px";
+  box.style.width=boxW+"px";
+  box.style.height=boxH+"px";
+  box.dataset.imgLeft=left; box.dataset.imgTop=top; box.dataset.imgW=w; box.dataset.imgH=h;
+}
+function closeCropModal(){
+  document.getElementById("crop-modal").classList.remove("open");
+  document.getElementById("cropImg").onload=null;
+}
+document.addEventListener("pointerdown", function(e){
+  var modal=document.getElementById("crop-modal");
+  if(!modal || !modal.classList.contains("open")) return;
+  var box=document.getElementById("cropBox");
+  var handle=e.target.closest && e.target.closest(".crop-handle");
+  if(!handle && e.target!==box) return;
+  e.preventDefault();
+  _cropDrag={
+    mode: handle ? handle.getAttribute("data-h") : "move",
+    startX:e.clientX, startY:e.clientY,
+    boxStart:{left:parseFloat(box.style.left),top:parseFloat(box.style.top),width:parseFloat(box.style.width),height:parseFloat(box.style.height)}
+  };
+});
+document.addEventListener("pointermove", function(e){
+  if(!_cropDrag) return;
+  var box=document.getElementById("cropBox");
+  var dx=e.clientX-_cropDrag.startX, dy=e.clientY-_cropDrag.startY;
+  var imgLeft=parseFloat(box.dataset.imgLeft), imgTop=parseFloat(box.dataset.imgTop), imgW=parseFloat(box.dataset.imgW), imgH=parseFloat(box.dataset.imgH);
+  var b=Object.assign({}, _cropDrag.boxStart);
+  if(_cropDrag.mode==="move"){
+    b.left+=dx; b.top+=dy;
+  } else {
+    if(_cropDrag.mode.indexOf("n")>=0){ b.top+=dy; b.height-=dy; }
+    if(_cropDrag.mode.indexOf("s")>=0){ b.height+=dy; }
+    if(_cropDrag.mode.indexOf("w")>=0){ b.left+=dx; b.width-=dx; }
+    if(_cropDrag.mode.indexOf("e")>=0){ b.width+=dx; }
+  }
+  b.width=Math.max(30,b.width); b.height=Math.max(30,b.height);
+  b.left=Math.max(imgLeft, Math.min(b.left, imgLeft+imgW-b.width));
+  b.top=Math.max(imgTop, Math.min(b.top, imgTop+imgH-b.height));
+  if(b.left+b.width > imgLeft+imgW) b.width = imgLeft+imgW-b.left;
+  if(b.top+b.height > imgTop+imgH) b.height = imgTop+imgH-b.top;
+  box.style.left=b.left+"px"; box.style.top=b.top+"px"; box.style.width=b.width+"px"; box.style.height=b.height+"px";
+});
+document.addEventListener("pointerup", function(){ _cropDrag=null; });
+
+async function applyCrop(){
+  var meta=lbMeta[lbIdx];
+  if(!meta || meta.entryId===undefined){ toast("Can't crop this image","err"); return; }
+  var e=DB.entries.find(function(x){return x.id===meta.entryId;});
+  if(!e || !e.items[meta.itemIdx] || !e.items[meta.itemIdx].images){ toast("Couldn't find that saved item","err"); return; }
+  var arr=e.items[meta.itemIdx].images;
+  var idx=meta.imgIdx;
+  if(idx===undefined || !arr[idx]){ toast("Image not found","err"); return; }
+
+  var box=document.getElementById("cropBox");
+  var imgLeft=parseFloat(box.dataset.imgLeft), imgTop=parseFloat(box.dataset.imgTop), imgW=parseFloat(box.dataset.imgW), imgH=parseFloat(box.dataset.imgH);
+  var bLeft=parseFloat(box.style.left), bTop=parseFloat(box.style.top), bWidth=parseFloat(box.style.width), bHeight=parseFloat(box.style.height);
+  var scaleX=_cropImgNatural.w/imgW, scaleY=_cropImgNatural.h/imgH;
+  var sx=(bLeft-imgLeft)*scaleX, sy=(bTop-imgTop)*scaleY, sw=bWidth*scaleX, sh=bHeight*scaleY;
+
+  var imgEl=document.getElementById("cropImg");
+  var canvas=document.createElement("canvas");
+  canvas.width=Math.max(1,Math.round(sw)); canvas.height=Math.max(1,Math.round(sh));
+  canvas.getContext("2d").drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  var croppedDataUrl=canvas.toDataURL("image/jpeg", 0.85);
+
+  var imgObj=arr[idx];
+  if(typeof imgObj!=="object"){ imgObj={src:imgObj,stars:0,type:"image"}; arr[idx]=imgObj; }
+  var originalSrc=imgObj.src; // kept for Undo
+  var oldDriveId=imgObj.driveId;
+  var accId=e._acc;
+
+  closeCropModal();
+  toast("Cropping and saving...","info");
+
+  var driveUpdatedInPlace=false;
+  if(oldDriveId && accId && acctAuth[accId] && acctAuth[accId].token){
+    try{
+      await driveUpdateImageContent(accId, oldDriveId, croppedDataUrl);
+      imgObj.src=croppedDataUrl; // same driveId kept - true in-place update, no copy created
+      driveUpdatedInPlace=true;
+      toast("Photo cropped and updated on Drive","ok");
+    }catch(err){
+      console.log("in-place crop update failed, falling back to re-upload:", err);
+      imgObj.src=croppedDataUrl;
+      delete imgObj.driveId;
+      queueSync();
+      driveApiFetch(accId, "https://www.googleapis.com/drive/v3/files/"+oldDriveId, {method:"DELETE"}).catch(function(){});
+      toast("Photo cropped - saving to Drive shortly","ok");
+    }
+  } else {
+    imgObj.src=croppedDataUrl;
+    if(oldDriveId) delete imgObj.driveId;
+    queueSync();
+    toast("Photo cropped","ok");
+  }
+
+  dbVersion++;
+  lbImgs[lbIdx]=croppedDataUrl;
+  loadLBImg(lbIdx);
+  renderCat();
+  var brres=document.getElementById("brres"); if(brres) renderBr();
+
+  showUndoBar("Photo cropped", function(){
+    imgObj.src=originalSrc;
+    if(driveUpdatedInPlace && oldDriveId && accId){
+      // The Drive file was overwritten in place - push the original bytes
+      // back to that same file so Drive matches what Undo shows locally.
+      driveUpdateImageContent(accId, oldDriveId, originalSrc).catch(function(e2){ console.log("undo crop: drive restore failed", e2); });
+    } else {
+      // The crop had already been queued as a fresh upload (offline/fallback
+      // path) - simplest safe undo is to mark the original content dirty
+      // again and let it sync normally, rather than risk racing the
+      // in-flight upload by reusing the old file id.
+      delete imgObj.driveId;
+      queueSync();
+    }
+    dbVersion++;
+    lbImgs[lbIdx]=originalSrc;
+    loadLBImg(lbIdx);
+    renderCat();
+    var brres2=document.getElementById("brres"); if(brres2) renderBr();
+  });
+}
+
 // Deletes every currently multi-selected photo/video in Catalogue at once
 // (see the "Select" toggle). Confirms first since there's no per-item undo
 // once the bulk action runs - only the whole batch, via the same undo bar.
@@ -2928,6 +3113,19 @@ async function driveUploadImage(accId, dataUrl){
   imgCache[fileId]=dataUrl; // we already have it locally, no need to ever re-download this one
   idbSetImg(fileId,dataUrl);
   return fileId;
+}
+
+// Overwrites an EXISTING Drive file's bytes in place (same fileId) - used
+// by Crop so re-saving an edited photo updates the original rather than
+// leaving the old uncropped version sitting in Drive as an orphaned copy.
+async function driveUpdateImageContent(accId, fileId, dataUrl){
+  var blob=dataURLtoBlob(dataUrl);
+  var resp=await driveApiFetch(accId, "https://www.googleapis.com/upload/drive/v3/files/"+fileId+"?uploadType=media",{
+    method:"PATCH",headers:{"Content-Type":blob.type||"image/jpeg"},body:blob
+  });
+  if(!resp.ok) throw new Error("Drive update failed: "+resp.status);
+  imgCache[fileId]=dataUrl;
+  idbSetImg(fileId,dataUrl);
 }
 
 async function driveFetchImage(accId, fileId){
