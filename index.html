@@ -806,7 +806,7 @@ async function scanCard(){
     parts.push({inline_data:{mime_type: sides.back.mime, data: sides.back.b64}});
     parts.push({text: "BACK side of same visiting card."});
   }
-  parts.push({text: 'Extract ALL info from this visiting card. Combine both sides. Return ONLY valid JSON, no markdown, no code fences: {"firm":"","contacts":[{"name":"","role":""}],"phones":[{"type":"mobile|whatsapp|office|other","number":""}],"address":"","notes":""}. Deduplicate numbers. Combine address from both sides.'});
+  parts.push({text: 'Extract ALL info from this visiting card. Combine both sides. If any text on the card is written in Hindi or any other non-English script, convert every field to English before returning it - transliterate names, firm names, and addresses into standard Roman-script English spelling (e.g. "राज ज्वेलर्स" becomes "Raj Jewellers", not a literal translation of the words) rather than leaving any Devanagari or other non-Latin script in the output. Return ONLY valid JSON, no markdown, no code fences: {"firm":"","contacts":[{"name":"","role":""}],"phones":[{"type":"mobile|whatsapp|office|other","number":""}],"address":"","notes":""}. Deduplicate numbers. Combine address from both sides.'});
 
   try {
     if(!GEMINI_PROXY_URL || GEMINI_PROXY_URL.indexOf("PASTE_YOUR") === 0){
