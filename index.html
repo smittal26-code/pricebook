@@ -2794,7 +2794,13 @@ async function autoDetectTextBox(){
     autoSampleColor();
     toast("Found it - adjust the box if needed, then Apply","ok");
   }catch(err){
-    toast("AI error: "+err.message,"err");
+    var msg = err.message || "";
+    var isRateLimit = /429|RESOURCE_EXHAUSTED|quota/i.test(msg);
+    if(isRateLimit){
+      toast("AI limit reached for now (free tier allows a limited number of Auto-Detects per minute) - wait about a minute and try again, or just drag the box yourself in the meantime","err",6000);
+    } else {
+      toast("AI error: "+msg,"err",5000);
+    }
   } finally {
     btn.disabled=false; btn.innerHTML="&#10024; Auto-Detect";
   }
@@ -3918,6 +3924,16 @@ async function loadAllAccounts(){
   await applyLocalSnapshot();
   renderDriveStatus();
   renderCat(); renderBr(); renderSup(); // show whatever's on-device immediately, even before Drive reconnects
+  // Deliberately give the browser a beat to actually paint the above and let
+  // you start looking at / tapping around the app before any Google
+  // reconnect activity begins - previously this loop started immediately,
+  // so on days where several of your Drives' hour-long tokens had all
+  // expired together, the very first thing you saw on opening the app was
+  // several back-to-back Google reconnect flashes competing for your
+  // attention before you could do anything. Now your data is fully visible
+  // and interactive first; reconnecting happens a moment later in the
+  // background regardless.
+  await new Promise(function(r){ setTimeout(r, 700); });
   // Sequential on purpose: GIS's token client has one shared callback, so
   // firing requestAccessToken for several accounts at once risks a response
   // landing on the wrong account. Accounts with an already-cached token skip
@@ -4338,7 +4354,7 @@ async function syncDrive(){
 }
 
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function toast(msg,type){if(!type)type="ok";var t=document.getElementById("toast");t.textContent=msg;t.className="toast on "+type;setTimeout(function(){t.classList.remove("on");},3200);}
+function toast(msg,type,ms){if(!type)type="ok";var t=document.getElementById("toast");t.textContent=msg;t.className="toast on "+type;clearTimeout(t._hideTimer);t._hideTimer=setTimeout(function(){t.classList.remove("on");},ms||3200);}
 
 // === PWA: Service Worker Registration ===
 var deferredPrompt = null;
