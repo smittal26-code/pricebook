@@ -557,6 +557,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       <div style="display:flex;gap:6px">
         <button class="btn xs" onclick="clearCatSelection()">Clear</button>
         <button class="btn wa xs" onclick="shareSelectedWA()">WA Share Selected</button>
+        <button class="btn wa xs" onclick="shareSelectedWACustomer()">&#128274; Share to Customer</button>
         <button class="btn xs dan" onclick="deleteSelectedCat()">Delete Selected</button>
       </div>
     </div>
@@ -2071,6 +2072,122 @@ async function shareSelectedWA(){
     }catch(e){ /* fall through to text-link fallback below */ }
   }
   waFB(keys.length+" jewellery images");
+}
+
+// ===== Watermarking for customer-facing shares =====
+// Draws the source photo onto a canvas at full natural resolution, then adds
+// two complementary layers so the mark protects the design without fighting
+// it for attention:
+//   1. A soft bottom gradient band (like a photo caption, not a sticker)
+//      carrying the shop name + phone in clean white type with a subtle
+//      shadow for legibility on any background.
+//   2. A faint, small, repeated diagonal watermark tiled across the whole
+//      photo at very low opacity - enough that a cropped/screenshotted
+//      re-use still carries a mark somewhere, but never bright or large
+//      enough to distract from the jewellery itself.
+// Both layers scale with the image's own resolution so the mark looks
+// right whether the photo is a close-up macro shot or a wide shop photo.
+function watermarkImage(src, shopName, phoneText){
+  return new Promise(function(resolve){
+    var img = new Image();
+    img.onload = function(){
+      var w = img.naturalWidth || 1200, h = img.naturalHeight || 1200;
+      var c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      var ctx = c.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // ---- Layer 1: faint tiled diagonal watermark (protects the design) ----
+      ctx.save();
+      ctx.globalAlpha = 0.09; // deliberately very light - present, not loud
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "rgba(0,0,0,0.20)";
+      ctx.lineWidth = Math.max(1, w * 0.0012);
+      var diagFontSize = Math.max(14, Math.round(w * 0.038));
+      ctx.font = "600 " + diagFontSize + "px 'Segoe UI', Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate(-Math.PI / 7); // gentle diagonal, not a harsh slash across the photo
+      var stepY = diagFontSize * 3.4;
+      var diag = Math.sqrt(w * w + h * h);
+      var rows = Math.ceil(diag / stepY) + 2;
+      for (var i = -rows; i <= rows; i++) {
+        var y = i * stepY;
+        ctx.strokeText(shopName, 0, y);
+        ctx.fillText(shopName, 0, y);
+      }
+      ctx.restore();
+
+      // ---- Layer 2: soft bottom caption band (shop identity, easy to read) ----
+      var bandH = Math.round(h * 0.16);
+      var grad = ctx.createLinearGradient(0, h - bandH, 0, h);
+      grad.addColorStop(0, "rgba(0,0,0,0)");
+      grad.addColorStop(1, "rgba(0,0,0,0.50)");
+      ctx.save();
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, h - bandH, w, bandH);
+      ctx.restore();
+
+      ctx.save();
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.shadowColor = "rgba(0,0,0,0.55)";
+      ctx.shadowBlur = Math.max(2, w * 0.004);
+      var padX = Math.round(w * 0.035);
+      var nameSize = Math.max(13, Math.round(h * 0.030));
+      var numSize = Math.max(10, Math.round(h * 0.021));
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "700 " + nameSize + "px 'Segoe UI', Arial, sans-serif";
+      var nameY = h - (numSize * 1.5) - Math.round(h * 0.02);
+      ctx.fillText(shopName, padX, nameY);
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.font = "500 " + numSize + "px 'Segoe UI', Arial, sans-serif";
+      ctx.fillText(phoneText, padX, nameY + numSize * 1.5);
+      ctx.restore();
+
+      resolve(c.toDataURL("image/jpeg", 0.92));
+    };
+    img.onerror = function(){ resolve(src); }; // never block a share on a bad decode
+    img.src = src;
+  });
+}
+
+// Watermarks every currently-selected photo (Catalogue multi-select) and
+// shares the result straight to the customer as real image files - no link,
+// so tapping it in WhatsApp never opens the whole app. Videos in the
+// selection are skipped (a watermark can't be baked into a video this way)
+// with a toast explaining that, rather than silently dropping them.
+var WATERMARK_SHOP_NAME = "SK Jewellers";
+var WATERMARK_PHONE = "9312281343";
+async function shareSelectedWACustomer(){
+  var keys = Object.keys(catSelected);
+  if(!keys.length){ toast("Select at least one photo first","err"); return; }
+  var items = keys.map(function(k){ return catSelected[k]; });
+  var photoItems = items.filter(function(it){ return it.mediaType!=="video"; });
+  var skippedVideos = items.length - photoItems.length;
+  if(!photoItems.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
+
+  toast("Watermarking "+photoItems.length+" photo(s)...","info");
+  try{
+    var watermarked = await Promise.all(photoItems.map(function(it){
+      return watermarkImage(it.src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+    }));
+    if(navigator.share && navigator.canShare){
+      var files = await Promise.all(watermarked.map(async function(du, i){
+        var r = await fetch(du); var blob = await r.blob();
+        return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
+      }));
+      if(navigator.canShare({files:files})){
+        await navigator.share({files:files, title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME+" - "+files.length+" design(s)"});
+        toast("Shared to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
+        return;
+      }
+    }
+    toast("Sharing images isn't supported on this browser/device","err");
+  }catch(e){
+    if(e && e.name!=="AbortError") toast("Couldn't share: "+e.message,"err");
+  }
 }
 
 var _catTreeCache=null,_catTreeCacheKey=null;
