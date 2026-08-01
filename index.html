@@ -3356,7 +3356,9 @@ var GOOGLE_CLIENT_ID = "292406321-n8d0sm561uski3i1ula3cq369h1ql8os.apps.googleus
 // actual Google account email in the Manage Drives screen, and so silent
 // reconnects can be targeted at the right account via a login hint.
 var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email";
-var tokenClient = null;
+// One GIS token client PER account (not shared) - see ensureTokenClient()
+// below for why this matters for reconnect speed.
+var tokenClients = {}; // accId -> google.accounts.oauth2 token client
 // Paste your deployed Apps Script Web App URL here (see Code.gs setup instructions).
 // Example: "https://script.google.com/macros/s/AKfycbx.../exec"
 var GEMINI_PROXY_URL = "https://script.google.com/macros/s/AKfycbx-8sC5IWiJ5dpRZ3k7bHa_ofHlIiggOex04OHMADDp65X67YLujX455lMlT5gbW-1o0Q/exec";
@@ -3398,7 +3400,6 @@ var acctLastSavedContent={};                   // accId -> last JSON string succ
 var acctLastSynced=(function(){ try{ return JSON.parse(localStorage.getItem("pb_last_synced")||"{}"); }catch(e){ return {}; } })(); // accId -> ms timestamp of last successful save or load - persisted so it survives app restarts (this app restarts a LOT on some phones, and previously this reset to "never" every single time even right after a real successful sync)
 function saveLastSyncedPersist(){ try{ localStorage.setItem("pb_last_synced", JSON.stringify(acctLastSynced)); }catch(e){} }
 var BACKUP_FOLDER_NAME="PricebookBackups", MAX_BACKUPS_PER_ACCOUNT=10;
-var _pendingConnectId=null;
 
 function loadAccountsConfig(){
   try{ var raw=localStorage.getItem(ACCOUNTS_KEY); driveAccounts = raw?JSON.parse(raw):[]; }catch(e){ driveAccounts=[]; }
@@ -3442,19 +3443,29 @@ function readAcctTokenCache(id){
 }
 function clearAcctToken(id){ acctAuth[id]=null; try{ localStorage.removeItem(acctTokenKey(id)); }catch(e){} }
 
-function ensureTokenClient(){
+// Previously there was ONE shared Google sign-in client for every account,
+// with a single "last request wins" callback - so reconnecting 5 Drives had
+// to be done one at a time (await each fully before starting the next),
+// otherwise a response could land on the wrong account. That's what made
+// reconnecting several Drives on app-open feel like 5 separate Google
+// screens in a row.
+// Fix: give each account its own token client with its own callback that
+// already knows which account it belongs to. That removes the "only one at
+// a time" restriction entirely - loadAllAccounts()/syncDrive() below now
+// fire all the silent reconnect attempts together (Promise.all) instead of
+// waiting through each one in turn, so the whole batch finishes in roughly
+// the time of the SLOWEST single reconnect instead of the sum of all of them.
+function ensureTokenClient(accId){
   return new Promise(function(resolve){
     (function poll(){
       if(typeof google !== "undefined" && google.accounts){
-        if(!tokenClient){
-          tokenClient = google.accounts.oauth2.initTokenClient({
+        if(!tokenClients[accId]){
+          tokenClients[accId] = google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
             scope: DRIVE_SCOPE,
             callback: function(resp){
-              var id=_pendingConnectId; _pendingConnectId=null;
-              if(!id) return;
-              if(resp.error){ acctAuthCallbackFail(id); return; }
-              acctAuthCallbackSuccess(id, resp);
+              if(resp.error){ acctAuthCallbackFail(accId); return; }
+              acctAuthCallbackSuccess(accId, resp);
             }
           });
         }
@@ -3487,14 +3498,15 @@ async function fetchAndStoreEmail(id, token){
 // Requests a token for one specific account slot. promptMode "" = try silently
 // (needs an existing Google browser session + prior consent), "consent"/
 // "select_account" = show the picker (used when linking a brand new account).
+// Safe to call for several accounts at once now - each has its own client
+// and callback, so responses can never cross-wire between accounts.
 function requestAccountToken(id, promptMode, hintEmail){
-  return ensureTokenClient().then(function(){
+  return ensureTokenClient(id).then(function(){
     return new Promise(function(resolve){
       _acctAuthResolvers[id]=resolve;
-      _pendingConnectId=id;
       var params={prompt:promptMode};
       if(hintEmail) params.hint=hintEmail;
-      tokenClient.requestAccessToken(params);
+      tokenClients[id].requestAccessToken(params);
     });
   });
 }
@@ -4051,15 +4063,13 @@ async function loadAllAccounts(){
   // and interactive first; reconnecting happens a moment later in the
   // background regardless.
   await new Promise(function(r){ setTimeout(r, 700); });
-  // Sequential on purpose: GIS's token client has one shared callback, so
-  // firing requestAccessToken for several accounts at once risks a response
-  // landing on the wrong account. Accounts with an already-cached token skip
-  // GIS entirely (near-instant); only ones needing an actual silent
-  // reconnect attempt add any real delay, and there are normally very few
-  // of those in a row.
-  for(var i=0;i<driveAccounts.length;i++){
-    await connectAccount(driveAccounts[i].id, false);
-  }
+  // Each account now has its own token client/callback (see
+  // ensureTokenClient), so these no longer have to be done one at a time -
+  // fire every reconnect together and wait for the slowest one, instead of
+  // waiting through each in turn. Accounts with an already-cached token
+  // resolve near-instantly either way; this mainly speeds up the case where
+  // several tokens expired together and each needs a real reconnect.
+  await Promise.all(driveAccounts.map(function(a){ return connectAccount(a.id, false); }));
   markDriveReady();
   setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary());
   renderCat(); renderBr(); renderSup();
@@ -4456,16 +4466,17 @@ async function initDrive(){
 
 // Manual "reconnect everything" - tries every configured account again,
 // forcing the picker for any that don't have a usable token at all yet.
+// Runs every account concurrently (separate token client per account - see
+// ensureTokenClient) instead of one at a time.
 async function syncDrive(){
   setDP("loading","...","Connecting...");
-  for(var i=0;i<driveAccounts.length;i++){
-    var acc = driveAccounts[i];
+  await Promise.all(driveAccounts.map(async function(acc){
     if(acctAuth[acc.id] && acctAuth[acc.id].token){
       try{ await loadOneAccountData(acc.id); acctStatus[acc.id]="ok"; }catch(e){ acctStatus[acc.id]="err"; }
     } else {
       await connectAccount(acc.id, false);
     }
-  }
+  }));
   setDP(anyAccountOk()?"ok":"err", anyAccountOk()?"OK":"!", driveStatusSummary());
   renderDriveStatus(); renderCat(); renderBr(); renderSup();
 }
