@@ -524,7 +524,6 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
       <div class="ctitle" style="margin:0">&#128444; Catalogue</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="btn sm" onclick="shareFull()">&#128279; Link</button>
         <button class="btn wa sm" onclick="waAll()">WA Share</button>
         <button class="btn wa sm" onclick="openAskModal()">&#128269; Ask Suppliers</button>
       </div>
@@ -621,6 +620,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <div class="lbthumbstrip" id="lbstrip"></div>
   <div class="lbbottom">
     <button class="btn wa sm" onclick="waShareCur()">&#128247; Share Image</button>
+    <button class="btn wa sm" onclick="shareCurWACustomer()">&#128274; Share to Customer</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="toggleInfo()">&#128203; Details</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openCropModal()">&#9986; Crop</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openTxtModal()">&#128221; Text</button>
@@ -2087,7 +2087,7 @@ async function shareSelectedWA(){
 //      enough to distract from the jewellery itself.
 // Both layers scale with the image's own resolution so the mark looks
 // right whether the photo is a close-up macro shot or a wide shop photo.
-function watermarkImage(src, shopName, phoneText){
+function watermarkImageToCanvas(src, shopName, phoneText){
   return new Promise(function(resolve){
     var img = new Image();
     img.onload = function(){
@@ -2146,10 +2146,31 @@ function watermarkImage(src, shopName, phoneText){
       ctx.fillText(phoneText, padX, nameY + numSize * 1.5);
       ctx.restore();
 
-      resolve(c.toDataURL("image/jpeg", 0.92));
+      resolve(c);
     };
-    img.onerror = function(){ resolve(src); }; // never block a share on a bad decode
+    img.onerror = function(){ resolve(null); };
     img.src = src;
+  });
+}
+// dataURL version - kept for anything that wants a plain string (previews, etc)
+function watermarkImage(src, shopName, phoneText){
+  return watermarkImageToCanvas(src, shopName, phoneText).then(function(c){
+    return c ? c.toDataURL("image/jpeg", 0.92) : src;
+  });
+}
+// Blob version - used for sharing. canvas.toBlob() is a direct binary
+// encode with no base64 round-trip, which matters here: navigator.share()
+// only works for a few seconds after the tap that triggered it ("user
+// activation"), and the old code was burning part of that window doing
+// toDataURL() -> fetch() -> blob() for every photo. This path is
+// meaningfully faster, which is what actually fixes the "Failed to execute
+// share on Navigator: permission denied" error on slower phones/photos.
+function watermarkImageBlob(src, shopName, phoneText){
+  return watermarkImageToCanvas(src, shopName, phoneText).then(function(c){
+    return new Promise(function(resolve){
+      if(!c){ resolve(null); return; }
+      c.toBlob(function(blob){ resolve(blob); }, "image/jpeg", 0.92);
+    });
   });
 }
 
@@ -2168,25 +2189,27 @@ async function shareSelectedWACustomer(){
   var skippedVideos = items.length - photoItems.length;
   if(!photoItems.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
 
-  toast("Watermarking "+photoItems.length+" photo(s)...","info");
   try{
-    var watermarked = await Promise.all(photoItems.map(function(it){
-      return watermarkImage(it.src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+    var blobs = await Promise.all(photoItems.map(function(it){
+      return watermarkImageBlob(it.src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
     }));
-    if(navigator.share && navigator.canShare){
-      var files = await Promise.all(watermarked.map(async function(du, i){
-        var r = await fetch(du); var blob = await r.blob();
-        return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
-      }));
-      if(navigator.canShare({files:files})){
-        await navigator.share({files:files, title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME+" - "+files.length+" design(s)"});
-        toast("Shared to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
-        return;
-      }
+    var files = blobs.filter(Boolean).map(function(blob, i){
+      return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
+    });
+    if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
+    if(navigator.share && navigator.canShare && navigator.canShare({files:files})){
+      await navigator.share({files:files, title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME+" - "+files.length+" design(s)"});
+      toast("Shared to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
+      return;
     }
     toast("Sharing images isn't supported on this browser/device","err");
   }catch(e){
-    if(e && e.name!=="AbortError") toast("Couldn't share: "+e.message,"err");
+    if(e && e.name==="AbortError") return; // user cancelled the share sheet - not an error
+    if(e && e.name==="NotAllowedError"){
+      toast("Sharing timed out - tap Share to Customer again (works best right after selecting photos)","err",4500);
+      return;
+    }
+    toast("Couldn't share: "+(e&&e.message||"unknown error"),"err");
   }
 }
 
@@ -2269,10 +2292,8 @@ function renderCat(){
     scheadLeft.innerHTML='<div class="sctitle"><span class="badge '+(catMaster||"gold")+'">'+(catMaster||"all")+'</span> '+esc(sm)+'</div><div class="scmeta">'+iCount+' item'+(iCount>1?"s":"")+' - '+totalI+' image'+(totalI>1?"s":"")+'</div>';
     var scheadRight=document.createElement("div");
     scheadRight.style.cssText="display:flex;align-items:center;gap:5px";
-    var shareBtn=document.createElement("button");shareBtn.className="btn xs";shareBtn.innerHTML="&#128279;";
-    shareBtn.onclick=function(e){e.stopPropagation();shareLnkSM(sm);};
     var arrowSpan=document.createElement("span");arrowSpan.textContent="^";arrowSpan.id="sa"+smKey;
-    scheadRight.appendChild(shareBtn);scheadRight.appendChild(arrowSpan);
+    scheadRight.appendChild(arrowSpan);
     schead.appendChild(scheadLeft);schead.appendChild(scheadRight);
     var scbody=document.createElement("div");scbody.className="scbody";scbody.id="sb"+smKey;
     schead.onclick=function(){togSec("sb"+smKey,"sa"+smKey);};
@@ -2299,10 +2320,6 @@ function renderCat(){
         vtog.appendChild(b);
       });
       iacts.appendChild(vtog);
-
-      var lnkBtn=document.createElement("button");lnkBtn.className="btn xs";lnkBtn.innerHTML="&#128279;";
-      lnkBtn.onclick=function(){shareLnk(sm,itN);};
-      iacts.appendChild(lnkBtn);
 
       var waBtn=document.createElement("button");waBtn.className="btn wa xs";waBtn.textContent="WA";
       waBtn.onclick=function(){waItem(sm,itN);};
@@ -3237,6 +3254,33 @@ function waMessageNext(){
   waMessageSupplier(idx);
 }
 function waShareCur(){waImg(lbImgs[lbIdx],document.getElementById("lbtitle").textContent);}
+// Watermarks and shares just the photo currently open in the lightbox -
+// the fast path for the common case of sending one photo to one customer,
+// without first having to go into Catalogue's multi-select mode.
+async function shareCurWACustomer(){
+  var meta=lbMeta[lbIdx]||{};
+  if(meta.mediaType==="video"){ toast("Videos can't be watermarked - try Share Image instead","err"); return; }
+  var src=lbImgs[lbIdx];
+  if(!src){ toast("Nothing to share","err"); return; }
+  try{
+    var blob = await watermarkImageBlob(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+    if(!blob){ toast("Couldn't prepare that photo - try again","err"); return; }
+    var file = new File([blob], "sk_jewellers.jpg", {type:"image/jpeg"});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME});
+      toast("Shared to customer","ok");
+      return;
+    }
+    toast("Sharing images isn't supported on this browser/device","err");
+  }catch(e){
+    if(e && e.name==="AbortError") return;
+    if(e && e.name==="NotAllowedError"){
+      toast("Sharing timed out - tap Share to Customer again","err",4500);
+      return;
+    }
+    toast("Couldn't share: "+(e&&e.message||"unknown error"),"err");
+  }
+}
 function dlCur(){var a=document.createElement("a");a.href=lbImgs[lbIdx];a.download=(document.getElementById("lbtitle").textContent||"image")+".jpg";document.body.appendChild(a);a.click();a.remove();}
 function waItem(sm,itN){var tree=buildCatData();var imgs=(tree[sm]||{})[itN]||[];var msg="*"+itN+"* ("+sm+")"+String.fromCharCode(10)+imgs.length+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book";window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");}
 function waAll(){var tree=buildCatData();var tot=Object.values(tree).reduce(function(s,i){return s+Object.values(i).reduce(function(s2,a){return s2+a.length;},0);},0);window.open("https://wa.me/?text="+encodeURIComponent("*Jewellery Catalogue*"+String.fromCharCode(10)+tot+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book"),"_blank");}
