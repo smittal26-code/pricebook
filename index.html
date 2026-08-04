@@ -551,10 +551,15 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
       </select>
       <span class="fpill" id="catSelBtn" onclick="toggleCatSelectMode()" style="margin-left:auto">&#9744; Select</span>
     </div>
-    <div id="catSelBar" style="display:none;align-items:center;justify-content:space-between;background:var(--brand-l);border:1px solid var(--brand);border-radius:8px;padding:8px 10px;margin-bottom:9px;font-size:12px">
-      <span id="catSelCount">0 selected</span>
-      <div style="display:flex;gap:6px">
-        <button class="btn xs" onclick="clearCatSelection()">Clear</button>
+    <div id="catSelBar" style="display:none;flex-direction:column;gap:8px;background:var(--brand-l);border:1px solid var(--brand);border-radius:8px;padding:8px 10px;margin-bottom:9px;font-size:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+        <span id="catSelCount">0 selected</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn xs" onclick="selectAllCat()">Select All</button>
+          <button class="btn xs" onclick="clearCatSelection()">Clear</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn wa xs" onclick="shareSelectedWA()">WA Share Selected</button>
         <button class="btn wa xs" onclick="shareSelectedWACustomer()">&#128274; Share to Customer</button>
         <button class="btn xs dan" onclick="deleteSelectedCat()">Delete Selected</button>
@@ -2036,12 +2041,29 @@ function setCatCollection(v){ catCollection=v; renderCat(); }
 function toggleCatSelectMode(){
   catSelecting = !catSelecting;
   catSelected = {};
+  _custShareQueue = []; _custShareTotal = 0;
   document.getElementById("catSelBtn").innerHTML = catSelecting ? "&#9745; Selecting" : "&#9744; Select";
   document.getElementById("catSelBtn").classList.toggle("active", catSelecting);
   document.getElementById("catSelBar").style.display = catSelecting ? "flex" : "none";
   renderCat();
 }
-function clearCatSelection(){ catSelected={}; updateCatSelBar(); renderCat(); }
+function clearCatSelection(){ catSelected={}; _custShareQueue=[]; _custShareTotal=0; updateCatSelBar(); renderCat(); }
+// Selects every photo/video currently visible under whatever master/
+// collection filter is active - so "Select All" respects the same filters
+// you're already looking at rather than grabbing the entire catalogue.
+function selectAllCat(){
+  var tree = buildCatData();
+  Object.values(tree).forEach(function(itemsObj){
+    Object.values(itemsObj).forEach(function(imgs){
+      imgs.forEach(function(img){
+        var selKey = img.entryId+"|||"+img.itemIdx+"|||"+img.imgIdx;
+        catSelected[selKey] = {src:img.src, mediaType:img.mediaType, itemName:img.itemName};
+      });
+    });
+  });
+  updateCatSelBar();
+  renderCat();
+}
 function updateCatSelBar(){
   var n = Object.keys(catSelected).length;
   var el = document.getElementById("catSelCount");
@@ -2181,7 +2203,22 @@ function watermarkImageBlob(src, shopName, phoneText){
 // with a toast explaining that, rather than silently dropping them.
 var WATERMARK_SHOP_NAME = "SK Jewellers";
 var WATERMARK_PHONE = "9312281343";
+// If a browser can't (or won't, due to how long watermarking several large
+// photos takes) share multiple files in ONE navigator.share() call, this
+// queue holds the rest so each remaining photo gets its own dedicated tap -
+// every tap is a fresh "user gesture", so this path always works even when
+// the one-shot bulk share doesn't. Same pattern as "Message Next" in Ask
+// Suppliers, just for sharing instead of messaging.
+var _custShareQueue = [];
+var _custShareTotal = 0;
+
 async function shareSelectedWACustomer(){
+  // A tap while a queue from an earlier tap is still in progress continues
+  // that queue instead of re-preparing the selection from scratch.
+  if(_custShareQueue.length){
+    await shareNextFromCustomerQueue();
+    return;
+  }
   var keys = Object.keys(catSelected);
   if(!keys.length){ toast("Select at least one photo first","err"); return; }
   var items = keys.map(function(k){ return catSelected[k]; });
@@ -2189,27 +2226,54 @@ async function shareSelectedWACustomer(){
   var skippedVideos = items.length - photoItems.length;
   if(!photoItems.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
 
-  try{
-    var blobs = await Promise.all(photoItems.map(function(it){
-      return watermarkImageBlob(it.src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
-    }));
-    var files = blobs.filter(Boolean).map(function(blob, i){
-      return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
-    });
-    if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
-    if(navigator.share && navigator.canShare && navigator.canShare({files:files})){
+  toast("Preparing "+photoItems.length+" photo(s)...","info");
+  var blobs = await Promise.all(photoItems.map(function(it){
+    return watermarkImageBlob(it.src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+  }));
+  var files = blobs.filter(Boolean).map(function(blob, i){
+    return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
+  });
+  if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
+
+  // Ideal path: everything in a single share sheet, one tap total.
+  if(navigator.share && navigator.canShare && navigator.canShare({files:files})){
+    try{
       await navigator.share({files:files, title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME+" - "+files.length+" design(s)"});
       toast("Shared to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
       return;
+    }catch(e){
+      if(e && e.name==="AbortError") return; // user closed the share sheet - not an error, don't fall back
+      // Any other failure (including the permission-timing error) - fall through to one-at-a-time below.
     }
-    toast("Sharing images isn't supported on this browser/device","err");
+  }
+
+  // Fallback: this device/browser can't do all of them in one go - queue
+  // them and share one per tap, which is slower but reliable everywhere.
+  if(!navigator.share){ toast("Sharing images isn't supported on this browser/device","err"); return; }
+  _custShareQueue = files;
+  _custShareTotal = files.length;
+  toast("This device can only share one photo at a time - tap 'Share to Customer' again to send each one ("+files.length+" ready)","info",5000);
+  await shareNextFromCustomerQueue();
+}
+
+async function shareNextFromCustomerQueue(){
+  if(!_custShareQueue.length) return;
+  var file = _custShareQueue.shift();
+  var num = _custShareTotal - _custShareQueue.length;
+  try{
+    await navigator.share({files:[file], title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME});
+    if(_custShareQueue.length){
+      toast("Sent "+num+" of "+_custShareTotal+" - tap 'Share to Customer' again for the next one","ok",4000);
+    } else {
+      toast("All "+_custShareTotal+" photo(s) shared to customer","ok");
+    }
   }catch(e){
-    if(e && e.name==="AbortError") return; // user cancelled the share sheet - not an error
-    if(e && e.name==="NotAllowedError"){
-      toast("Sharing timed out - tap Share to Customer again (works best right after selecting photos)","err",4500);
+    if(e && e.name==="AbortError"){
+      _custShareQueue.unshift(file); // put it back so the same tap retries it next time
+      toast("Cancelled - tap 'Share to Customer' again to retry this photo","info");
       return;
     }
-    toast("Couldn't share: "+(e&&e.message||"unknown error"),"err");
+    toast("Couldn't share photo "+num+": "+(e&&e.message||"unknown error"),"err");
   }
 }
 
