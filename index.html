@@ -524,7 +524,6 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
       <div class="ctitle" style="margin:0">&#128444; Catalogue</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="btn wa sm" onclick="waAll()">WA Share</button>
         <button class="btn wa sm" onclick="openAskModal()">&#128269; Ask Suppliers</button>
       </div>
     </div>
@@ -560,8 +559,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn wa xs" onclick="shareSelectedWA()">WA Share Selected</button>
-        <button class="btn wa xs" onclick="shareSelectedWACustomer()">&#128274; Share to Customer</button>
+        <button class="btn wa xs" id="catShareCustBtn" onclick="shareSelectedWACustomer()">Share Images</button>
         <button class="btn xs dan" onclick="deleteSelectedCat()">Delete Selected</button>
       </div>
     </div>
@@ -625,7 +623,6 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
   <div class="lbthumbstrip" id="lbstrip"></div>
   <div class="lbbottom">
     <button class="btn wa sm" onclick="waShareCur()">&#128247; Share Image</button>
-    <button class="btn wa sm" onclick="shareCurWACustomer()">&#128274; Share to Customer</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="toggleInfo()">&#128203; Details</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openCropModal()">&#9986; Crop</button>
     <button class="btn sm" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="openTxtModal()">&#128221; Text</button>
@@ -2041,13 +2038,14 @@ function setCatCollection(v){ catCollection=v; renderCat(); }
 function toggleCatSelectMode(){
   catSelecting = !catSelecting;
   catSelected = {};
-  _custShareQueue = []; _custShareTotal = 0;
+  _shareQueue = []; _shareQueueTotal = 0;
   document.getElementById("catSelBtn").innerHTML = catSelecting ? "&#9745; Selecting" : "&#9744; Select";
   document.getElementById("catSelBtn").classList.toggle("active", catSelecting);
   document.getElementById("catSelBar").style.display = catSelecting ? "flex" : "none";
+  updateCatSelBar();
   renderCat();
 }
-function clearCatSelection(){ catSelected={}; _custShareQueue=[]; _custShareTotal=0; updateCatSelBar(); renderCat(); }
+function clearCatSelection(){ catSelected={}; _shareQueue=[]; _shareQueueTotal=0; updateCatSelBar(); renderCat(); }
 // Selects every photo/video currently visible under whatever master/
 // collection filter is active - so "Select All" respects the same filters
 // you're already looking at rather than grabbing the entire catalogue.
@@ -2068,34 +2066,14 @@ function updateCatSelBar(){
   var n = Object.keys(catSelected).length;
   var el = document.getElementById("catSelCount");
   if(el) el.textContent = n+" selected";
+  var btn = document.getElementById("catShareCustBtn");
+  if(btn) btn.textContent = "Share "+(n||0)+" Image"+(n===1?"":"s");
 }
 function toggleCatSelect(k, src, mediaType, itemName){
   if(catSelected[k]) delete catSelected[k];
   else catSelected[k] = {src:src, mediaType:mediaType, itemName:itemName};
   updateCatSelBar();
 }
-async function shareSelectedWA(){
-  var keys = Object.keys(catSelected);
-  if(!keys.length){ toast("Select at least one photo/video first","err"); return; }
-  var items = keys.map(function(k){ return catSelected[k]; });
-  if(navigator.share && navigator.canShare){
-    try{
-      var files = await Promise.all(items.map(async function(it, i){
-        var r = await fetch(it.src); var blob = await r.blob();
-        var mime = blob.type || "image/jpeg";
-        var ext = mime.indexOf("video")===0 ? (mime.indexOf("mp4")>-1?"mp4":"webm") : (mime.indexOf("png")>-1?"png":"jpg");
-        return new File([blob], (it.itemName||"jewellery")+"_"+(i+1)+"."+ext, {type:mime});
-      }));
-      if(navigator.canShare({files:files})){
-        await navigator.share({files:files, title:"Jewellery Price Book", text:keys.length+" images"});
-        toast("Shared","ok");
-        return;
-      }
-    }catch(e){ /* fall through to text-link fallback below */ }
-  }
-  waFB(keys.length+" jewellery images");
-}
-
 // ===== Watermarking for customer-facing shares =====
 // Draws the source photo onto a canvas at full natural resolution, then adds
 // two complementary layers so the mark protects the design without fighting
@@ -2107,8 +2085,6 @@ async function shareSelectedWA(){
 //      photo at very low opacity - enough that a cropped/screenshotted
 //      re-use still carries a mark somewhere, but never bright or large
 //      enough to distract from the jewellery itself.
-// Both layers scale with the image's own resolution so the mark looks
-// right whether the photo is a close-up macro shot or a wide shop photo.
 function watermarkImageToCanvas(src, shopName, phoneText){
   return new Promise(function(resolve){
     var img = new Image();
@@ -2119,9 +2095,8 @@ function watermarkImageToCanvas(src, shopName, phoneText){
       var ctx = c.getContext("2d");
       ctx.drawImage(img, 0, 0, w, h);
 
-      // ---- Layer 1: faint tiled diagonal watermark (protects the design) ----
       ctx.save();
-      ctx.globalAlpha = 0.09; // deliberately very light - present, not loud
+      ctx.globalAlpha = 0.09;
       ctx.fillStyle = "#ffffff";
       ctx.strokeStyle = "rgba(0,0,0,0.20)";
       ctx.lineWidth = Math.max(1, w * 0.0012);
@@ -2130,7 +2105,7 @@ function watermarkImageToCanvas(src, shopName, phoneText){
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.translate(w / 2, h / 2);
-      ctx.rotate(-Math.PI / 7); // gentle diagonal, not a harsh slash across the photo
+      ctx.rotate(-Math.PI / 7);
       var stepY = diagFontSize * 3.4;
       var diag = Math.sqrt(w * w + h * h);
       var rows = Math.ceil(diag / stepY) + 2;
@@ -2141,7 +2116,6 @@ function watermarkImageToCanvas(src, shopName, phoneText){
       }
       ctx.restore();
 
-      // ---- Layer 2: soft bottom caption band (shop identity, easy to read) ----
       var bandH = Math.round(h * 0.16);
       var grad = ctx.createLinearGradient(0, h - bandH, 0, h);
       grad.addColorStop(0, "rgba(0,0,0,0)");
@@ -2174,19 +2148,6 @@ function watermarkImageToCanvas(src, shopName, phoneText){
     img.src = src;
   });
 }
-// dataURL version - kept for anything that wants a plain string (previews, etc)
-function watermarkImage(src, shopName, phoneText){
-  return watermarkImageToCanvas(src, shopName, phoneText).then(function(c){
-    return c ? c.toDataURL("image/jpeg", 0.92) : src;
-  });
-}
-// Blob version - used for sharing. canvas.toBlob() is a direct binary
-// encode with no base64 round-trip, which matters here: navigator.share()
-// only works for a few seconds after the tap that triggered it ("user
-// activation"), and the old code was burning part of that window doing
-// toDataURL() -> fetch() -> blob() for every photo. This path is
-// meaningfully faster, which is what actually fixes the "Failed to execute
-// share on Navigator: permission denied" error on slower phones/photos.
 function watermarkImageBlob(src, shopName, phoneText){
   return watermarkImageToCanvas(src, shopName, phoneText).then(function(c){
     return new Promise(function(resolve){
@@ -2196,27 +2157,26 @@ function watermarkImageBlob(src, shopName, phoneText){
   });
 }
 
-// Watermarks every currently-selected photo (Catalogue multi-select) and
-// shares the result straight to the customer as real image files - no link,
-// so tapping it in WhatsApp never opens the whole app. Videos in the
-// selection are skipped (a watermark can't be baked into a video this way)
-// with a toast explaining that, rather than silently dropping them.
+// Watermarks every selected photo and shares them as real image files
+// straight to WhatsApp - no link, so tapping it never opens the whole app.
+// Genuinely attempts ALL photos in a SINGLE navigator.share() call first
+// (one tap = every photo in one WhatsApp attachment, not one-by-one) - this
+// is a real, single simultaneous share when the phone's browser supports
+// multi-file Web Share (current Chrome on Android does). The share call is
+// deliberately kept to just {files} with no title/text, since some
+// browsers reject file+text combinations even when the same files-only
+// call would succeed. Only if that's truly not supported does it fall back
+// to one photo per tap - a hard platform limit on unsupported browsers,
+// not something any web app can route around.
 var WATERMARK_SHOP_NAME = "SK Jewellers";
 var WATERMARK_PHONE = "9312281343";
-// If a browser can't (or won't, due to how long watermarking several large
-// photos takes) share multiple files in ONE navigator.share() call, this
-// queue holds the rest so each remaining photo gets its own dedicated tap -
-// every tap is a fresh "user gesture", so this path always works even when
-// the one-shot bulk share doesn't. Same pattern as "Message Next" in Ask
-// Suppliers, just for sharing instead of messaging.
-var _custShareQueue = [];
-var _custShareTotal = 0;
+var _shareQueue = [];
+var _shareQueueTotal = 0;
+var _shareQueueVideosSkipped = 0;
 
 async function shareSelectedWACustomer(){
-  // A tap while a queue from an earlier tap is still in progress continues
-  // that queue instead of re-preparing the selection from scratch.
-  if(_custShareQueue.length){
-    await shareNextFromCustomerQueue();
+  if(_shareQueue.length){
+    await shareNextFromQueue();
     return;
   }
   var keys = Object.keys(catSelected);
@@ -2225,6 +2185,7 @@ async function shareSelectedWACustomer(){
   var photoItems = items.filter(function(it){ return it.mediaType!=="video"; });
   var skippedVideos = items.length - photoItems.length;
   if(!photoItems.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
+  if(!navigator.share){ toast("Sharing images isn't supported on this browser/device","err"); return; }
 
   toast("Preparing "+photoItems.length+" photo(s)...","info");
   var blobs = await Promise.all(photoItems.map(function(it){
@@ -2235,42 +2196,43 @@ async function shareSelectedWACustomer(){
   });
   if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
 
-  // Ideal path: everything in a single share sheet, one tap total.
-  if(navigator.share && navigator.canShare && navigator.canShare({files:files})){
+  // Genuine single-tap, all-at-once attempt.
+  if(navigator.canShare && navigator.canShare({files:files})){
     try{
-      await navigator.share({files:files, title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME+" - "+files.length+" design(s)"});
-      toast("Shared to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
+      await navigator.share({files:files});
+      toast("Shared "+files.length+" photo(s) to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
       return;
     }catch(e){
-      if(e && e.name==="AbortError") return; // user closed the share sheet - not an error, don't fall back
-      // Any other failure (including the permission-timing error) - fall through to one-at-a-time below.
+      if(e && e.name==="AbortError") return; // user closed the share sheet - not an error
+      // fall through - real device/browser rejection, not just a slow prep
     }
   }
 
-  // Fallback: this device/browser can't do all of them in one go - queue
-  // them and share one per tap, which is slower but reliable everywhere.
-  if(!navigator.share){ toast("Sharing images isn't supported on this browser/device","err"); return; }
-  _custShareQueue = files;
-  _custShareTotal = files.length;
-  toast("This device can only share one photo at a time - tap 'Share to Customer' again to send each one ("+files.length+" ready)","info",5000);
-  await shareNextFromCustomerQueue();
+  // This phone's browser can't attach several files to one WhatsApp share
+  // (a platform/browser limit, not something the app can force around) -
+  // fall back to one tap per photo, which always works.
+  _shareQueue = files;
+  _shareQueueTotal = files.length;
+  _shareQueueVideosSkipped = skippedVideos;
+  toast("This browser can only attach one photo per share - tap the Share button again to send each one ("+files.length+" ready)","info",5500);
+  await shareNextFromQueue();
 }
 
-async function shareNextFromCustomerQueue(){
-  if(!_custShareQueue.length) return;
-  var file = _custShareQueue.shift();
-  var num = _custShareTotal - _custShareQueue.length;
+async function shareNextFromQueue(){
+  if(!_shareQueue.length) return;
+  var file = _shareQueue.shift();
+  var num = _shareQueueTotal - _shareQueue.length;
   try{
-    await navigator.share({files:[file], title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME});
-    if(_custShareQueue.length){
-      toast("Sent "+num+" of "+_custShareTotal+" - tap 'Share to Customer' again for the next one","ok",4000);
+    await navigator.share({files:[file]});
+    if(_shareQueue.length){
+      toast("Sent "+num+" of "+_shareQueueTotal+" - tap Share again for the next one","ok",4000);
     } else {
-      toast("All "+_custShareTotal+" photo(s) shared to customer","ok");
+      toast("All "+_shareQueueTotal+" photo(s) shared to customer"+(_shareQueueVideosSkipped?(" ("+_shareQueueVideosSkipped+" video(s) skipped)"):""),"ok");
     }
   }catch(e){
     if(e && e.name==="AbortError"){
-      _custShareQueue.unshift(file); // put it back so the same tap retries it next time
-      toast("Cancelled - tap 'Share to Customer' again to retry this photo","info");
+      _shareQueue.unshift(file); // put it back so the same tap retries it next time
+      toast("Cancelled - tap Share again to retry this photo","info");
       return;
     }
     toast("Couldn't share photo "+num+": "+(e&&e.message||"unknown error"),"err");
@@ -3318,36 +3280,8 @@ function waMessageNext(){
   waMessageSupplier(idx);
 }
 function waShareCur(){waImg(lbImgs[lbIdx],document.getElementById("lbtitle").textContent);}
-// Watermarks and shares just the photo currently open in the lightbox -
-// the fast path for the common case of sending one photo to one customer,
-// without first having to go into Catalogue's multi-select mode.
-async function shareCurWACustomer(){
-  var meta=lbMeta[lbIdx]||{};
-  if(meta.mediaType==="video"){ toast("Videos can't be watermarked - try Share Image instead","err"); return; }
-  var src=lbImgs[lbIdx];
-  if(!src){ toast("Nothing to share","err"); return; }
-  try{
-    var blob = await watermarkImageBlob(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
-    if(!blob){ toast("Couldn't prepare that photo - try again","err"); return; }
-    var file = new File([blob], "sk_jewellers.jpg", {type:"image/jpeg"});
-    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:WATERMARK_SHOP_NAME, text:WATERMARK_SHOP_NAME});
-      toast("Shared to customer","ok");
-      return;
-    }
-    toast("Sharing images isn't supported on this browser/device","err");
-  }catch(e){
-    if(e && e.name==="AbortError") return;
-    if(e && e.name==="NotAllowedError"){
-      toast("Sharing timed out - tap Share to Customer again","err",4500);
-      return;
-    }
-    toast("Couldn't share: "+(e&&e.message||"unknown error"),"err");
-  }
-}
 function dlCur(){var a=document.createElement("a");a.href=lbImgs[lbIdx];a.download=(document.getElementById("lbtitle").textContent||"image")+".jpg";document.body.appendChild(a);a.click();a.remove();}
 function waItem(sm,itN){var tree=buildCatData();var imgs=(tree[sm]||{})[itN]||[];var msg="*"+itN+"* ("+sm+")"+String.fromCharCode(10)+imgs.length+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book";window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");}
-function waAll(){var tree=buildCatData();var tot=Object.values(tree).reduce(function(s,i){return s+Object.values(i).reduce(function(s2,a){return s2+a.length;},0);},0);window.open("https://wa.me/?text="+encodeURIComponent("*Jewellery Catalogue*"+String.fromCharCode(10)+tot+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book"),"_blank");}
 function openLM(desc,params){curLnk=location.href.split("?")[0]+params;document.getElementById("lmdesc").textContent=desc;document.getElementById("lmurl").textContent=curLnk;document.getElementById("lnkmbg").classList.add("open");}
 function closeLM(){document.getElementById("lnkmbg").classList.remove("open");}
 function shareLnk(sm,itN){openLM("Share "+itN+" catalogue","?cat="+encodeURIComponent(catMaster)+"&sm="+encodeURIComponent(sm)+"&item="+encodeURIComponent(itN));}
