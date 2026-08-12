@@ -2076,14 +2076,14 @@ function toggleCatSelectMode(){
   catSelecting = !catSelecting;
   catSelected = {};
   _shareQueue = []; _shareQueueTotal = 0;
-  _wmCache = {};
+  _wmCache = {}; _wmReady = {};
   document.getElementById("catSelBtn").innerHTML = catSelecting ? "&#9745; Selecting" : "&#9744; Select";
   document.getElementById("catSelBtn").classList.toggle("active", catSelecting);
   document.getElementById("catSelBar").style.display = catSelecting ? "flex" : "none";
   updateCatSelBar();
   renderCat();
 }
-function clearCatSelection(){ catSelected={}; _shareQueue=[]; _shareQueueTotal=0; _wmCache={}; updateCatSelBar(); renderCat(); }
+function clearCatSelection(){ catSelected={}; _shareQueue=[]; _shareQueueTotal=0; _wmCache={}; _wmReady={}; updateCatSelBar(); renderCat(); }
 // Selects every photo/video currently visible under whatever master/
 // collection filter is active - so "Select All" respects the same filters
 // you're already looking at rather than grabbing the entire catalogue.
@@ -2105,8 +2105,26 @@ function updateCatSelBar(){
   var n = Object.keys(catSelected).length;
   var el = document.getElementById("catSelCount");
   if(el) el.textContent = n+" selected";
+  refreshShareButtonLabel();
+}
+// Keeps the Share button's label honest about real preparation progress -
+// e.g. "Preparing 3/11..." while watermarking is still running in the
+// background, switching to "Share 11 Images" only once everything selected
+// is actually ready to send. This is what lets shareSelectedWACustomer()
+// below refuse to call navigator.share() too early.
+function refreshShareButtonLabel(){
   var btn = document.getElementById("catShareCustBtn");
-  if(btn) btn.textContent = "Share "+(n||0)+" Image"+(n===1?"":"s");
+  if(!btn) return;
+  var keys = Object.keys(catSelected);
+  var photoKeys = keys.filter(function(k){ return catSelected[k].mediaType!=="video"; });
+  var n = keys.length;
+  if(!photoKeys.length){ btn.textContent = "Share "+n+" Image"+(n===1?"":"s"); return; }
+  var readyCount = photoKeys.filter(function(k){ return _wmReady[k]; }).length;
+  if(readyCount < photoKeys.length){
+    btn.textContent = "Preparing "+readyCount+"/"+photoKeys.length+"...";
+  } else {
+    btn.textContent = "Share "+n+" Image"+(n===1?"":"s");
+  }
 }
 function toggleCatSelect(k, src, mediaType, itemName){
   if(catSelected[k]){ delete catSelected[k]; }
@@ -2211,9 +2229,15 @@ function watermarkImageBlob(src, shopName, phoneText){
 // Blobs, which is fast enough to stay inside the activation window even for
 // several photos at once.
 var _wmCache = {};
+var _wmReady = {}; // key -> true once that photo's watermarking has actually finished (success or fail)
 function warmWatermarkCache(key, src, mediaType){
   if(mediaType==="video" || _wmCache[key]) return;
-  _wmCache[key] = watermarkImageBlob(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+  _wmReady[key] = false;
+  _wmCache[key] = watermarkImageBlob(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE).then(function(blob){
+    _wmReady[key] = true;
+    refreshShareButtonLabel();
+    return blob;
+  });
 }
 
 // Watermarks every selected photo and shares them as real image files
@@ -2245,19 +2269,33 @@ async function shareSelectedWACustomer(){
   if(!photoKeys.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
   if(!navigator.share){ toast("Sharing images isn't supported on this browser/device","err"); return; }
 
-  // Almost always already done by now, since selecting a photo starts its
-  // watermarking in the background - this just collects whatever's ready
-  // (and finishes any stragglers) rather than starting fresh from here.
-  var blobs = await Promise.all(photoKeys.map(function(k){
+  // CRITICAL: never call navigator.share() while any photo is still mid-
+  // watermarking. Calling it too early is exactly what produces the
+  // "must be handling a user gesture" error - the browser's share
+  // permission times out while still waiting on the canvas work, and that
+  // failure was also what caused the fallback to only manage one photo.
+  // Instead, make sure warming has started for everything selected, and if
+  // it isn't finished yet, stop here and ask for a fresh tap once it is -
+  // that next tap's activation window is used only for the instant,
+  // already-finished share, so it always has enough time.
+  var notReady = photoKeys.filter(function(k){
     if(!_wmCache[k]) warmWatermarkCache(k, catSelected[k].src, catSelected[k].mediaType);
-    return _wmCache[k];
-  }));
+    return !_wmReady[k];
+  });
+  if(notReady.length){
+    refreshShareButtonLabel();
+    toast("Still preparing "+notReady.length+" of "+photoKeys.length+" photo(s) - tap Share again in a moment","info",4000);
+    return;
+  }
+
+  var blobs = await Promise.all(photoKeys.map(function(k){ return _wmCache[k]; })); // already resolved - instant
   var files = blobs.filter(Boolean).map(function(blob, i){
     return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
   });
   if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
 
-  // Genuine single-tap, all-at-once attempt.
+  // Genuine single-tap, all-at-once attempt - safe now since nothing here
+  // has to wait on canvas work anymore.
   if(navigator.canShare && navigator.canShare({files:files})){
     try{
       await navigator.share({files:files});
