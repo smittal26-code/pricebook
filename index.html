@@ -193,13 +193,13 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 .vtbtn.active{background:var(--sur2);color:var(--txt)}
 .igrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .igrid.g1{grid-template-columns:1fr}
-.gitem{position:relative;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);cursor:pointer;aspect-ratio:1;background:var(--sur2)}
+.gitem{position:relative;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);cursor:pointer;aspect-ratio:1;background:var(--sur2);-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .gitem img{width:100%;height:100%;object-fit:cover;display:block}
 .gitem .wabtn{position:absolute;bottom:5px;right:5px;background:rgba(255,255,255,0.92);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px}
 .gitem .imgstars{position:absolute;top:4px;left:4px;display:flex;gap:1px;background:rgba(0,0,0,0.4);padding:2px 5px;border-radius:10px}
 .iscroll{display:flex;gap:7px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:3px;scrollbar-width:none}
 .iscroll::-webkit-scrollbar{display:none}
-.sitem{flex-shrink:0;width:150px;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);cursor:pointer;scroll-snap-align:start;position:relative;background:var(--sur2)}
+.sitem{flex-shrink:0;width:150px;border-radius:7px;overflow:hidden;border:1px solid var(--bdr);cursor:pointer;scroll-snap-align:start;position:relative;background:var(--sur2);-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .sitem img{width:100%;height:150px;object-fit:cover;display:block}
 .sitem .scap{padding:4px 6px;font-size:10px;color:var(--txt3)}
 .sitem .wabtn{position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.92);border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px}
@@ -754,6 +754,7 @@ var ic=0,crC=0,prC=0,iPhs={},iStars={},iVer={},gCnt={},gPhs={};
 var csort="tunch",cdir="asc";
 var catMaster="",catSort="none",catCollection="",viewSt={};
 var catSelecting=false, catSelected={}; // key: entryId_itemIdx_imgIdx -> {src,mediaType,itemName}
+var _catLongPressGuardUntil=0; // Date.now() timestamp until which a photo tap is ignored (swallows the click that follows a long-press)
 var lbImgs=[],lbMeta=[],lbIdx=0;
 var Z={scale:1,minS:1,maxS:5,ox:0,oy:0},PinchSt={on:false,d0:0,s0:1},DragSt={on:false,sx:0,sy:0,ox0:0,oy0:0};
 var lastTap=0,zHintT,zLvlT,swX=0,curLnk="";
@@ -1169,6 +1170,11 @@ function onSMChange(id){
 }
 
 var qImgs={}, qStars={};
+// Counts photos currently mid-compression/attach (camera shot just taken,
+// or a gallery file still being read) that haven't landed in qImgs yet.
+// saveAll() checks this before saving so a fast "add photo, then Save"
+// tap sequence can't silently save the item without that photo.
+var _pendingPhotoOps=0;
 function rk(id,name){ return id+"__"+String(name).replace(/[^a-zA-Z0-9]/g,"_"); }
 
 // ===== Generic Collection Name picker (used by camera + gallery capture) =====
@@ -1336,19 +1342,23 @@ async function addQIPhs(e,key){
   if(!collection){ toast("Cancelled - a collection name is required","err"); return; }
   if(!qImgs[key])qImgs[key]=[];
   files.forEach(function(f){
+    _pendingPhotoOps++;
     var isVideo = f.type.indexOf("video")===0;
     var r=new FileReader();
     r.onload=function(ev){
       if(isVideo){
         qImgs[key].push({src:ev.target.result,stars:0,type:"video",collection:collection});
         updateQThumbBadge(key);
+        _pendingPhotoOps--;
       } else {
         compressImage(ev.target.result,1280,0.75).then(function(src){
           qImgs[key].push({src:src,stars:0,type:"image",collection:collection});
           updateQThumbBadge(key);
+          _pendingPhotoOps--;
         });
       }
     };
+    r.onerror=function(){ _pendingPhotoOps--; };
     r.readAsDataURL(f);
   });
 }
@@ -1487,12 +1497,14 @@ function handleShotDataUrl(dataUrl,type){
     document.getElementById("camThumbs").appendChild(vwrap);
     return;
   }
+  _pendingPhotoOps++;
   compressImage(dataUrl,1600,0.85).then(function(src){
     camBatch.push({type:"image",src:src});
     document.getElementById("camCount").textContent=camBatch.length;
     var img=document.createElement("img");
     img.src=src; img.style.cssText="width:44px;height:44px;object-fit:cover;border-radius:5px;flex-shrink:0";
     document.getElementById("camThumbs").appendChild(img);
+    _pendingPhotoOps--;
   });
 }
 function closeCameraCapture(){
@@ -1502,6 +1514,19 @@ function closeCameraCapture(){
   document.getElementById("camModal").style.display="none";
 }
 async function doneCameraCapture(){
+  // A shot just taken finishes compressing a moment AFTER the shutter tap
+  // (handleShotDataUrl above), not instantly - tapping Done right away used
+  // to grab camBatch before that last photo had been pushed into it,
+  // silently leaving it out entirely. Wait for any in-flight shots to
+  // actually finish landing in camBatch first.
+  if(_pendingPhotoOps>0){
+    toast("Finishing last photo...","info");
+    var waited=0;
+    while(_pendingPhotoOps>0 && waited<8000){
+      await new Promise(function(r){ setTimeout(r,150); });
+      waited+=150;
+    }
+  }
   var targetKey = camTargetKey, batch = camBatch.slice();
   closeCameraCapture(); // release the camera stream immediately, don't hold it up on the prompt
   if(targetKey && batch.length){
@@ -1888,6 +1913,18 @@ async function saveAll(){
   var btn=document.getElementById("saveEntryBtn");
   if(btn){btn.disabled=true;btn.style.opacity="0.6";}
   try{
+    // A photo just taken/picked finishes attaching a moment after the tap
+    // (compression happens in the background) - saving before that finishes
+    // used to silently leave that photo out of the item entirely. Give it a
+    // few seconds to land rather than saving an incomplete item.
+    if(_pendingPhotoOps>0){
+      toast("Finishing "+_pendingPhotoOps+" photo(s) - one moment...","info");
+      var waited=0;
+      while(_pendingPhotoOps>0 && waited<8000){
+        await new Promise(function(r){ setTimeout(r,150); });
+        waited+=150;
+      }
+    }
     var items=colItems();
     if(!items.length){ toast("No items to save","err"); return; }
     // A single supplier visit can include Gold/Silver/Diamond items, each of
@@ -2039,13 +2076,14 @@ function toggleCatSelectMode(){
   catSelecting = !catSelecting;
   catSelected = {};
   _shareQueue = []; _shareQueueTotal = 0;
+  _wmCache = {};
   document.getElementById("catSelBtn").innerHTML = catSelecting ? "&#9745; Selecting" : "&#9744; Select";
   document.getElementById("catSelBtn").classList.toggle("active", catSelecting);
   document.getElementById("catSelBar").style.display = catSelecting ? "flex" : "none";
   updateCatSelBar();
   renderCat();
 }
-function clearCatSelection(){ catSelected={}; _shareQueue=[]; _shareQueueTotal=0; updateCatSelBar(); renderCat(); }
+function clearCatSelection(){ catSelected={}; _shareQueue=[]; _shareQueueTotal=0; _wmCache={}; updateCatSelBar(); renderCat(); }
 // Selects every photo/video currently visible under whatever master/
 // collection filter is active - so "Select All" respects the same filters
 // you're already looking at rather than grabbing the entire catalogue.
@@ -2056,6 +2094,7 @@ function selectAllCat(){
       imgs.forEach(function(img){
         var selKey = img.entryId+"|||"+img.itemIdx+"|||"+img.imgIdx;
         catSelected[selKey] = {src:img.src, mediaType:img.mediaType, itemName:img.itemName};
+        warmWatermarkCache(selKey, img.src, img.mediaType);
       });
     });
   });
@@ -2070,8 +2109,8 @@ function updateCatSelBar(){
   if(btn) btn.textContent = "Share "+(n||0)+" Image"+(n===1?"":"s");
 }
 function toggleCatSelect(k, src, mediaType, itemName){
-  if(catSelected[k]) delete catSelected[k];
-  else catSelected[k] = {src:src, mediaType:mediaType, itemName:itemName};
+  if(catSelected[k]){ delete catSelected[k]; }
+  else { catSelected[k] = {src:src, mediaType:mediaType, itemName:itemName}; warmWatermarkCache(k, src, mediaType); }
   updateCatSelBar();
 }
 // ===== Watermarking for customer-facing shares =====
@@ -2157,6 +2196,26 @@ function watermarkImageBlob(src, shopName, phoneText){
   });
 }
 
+// Cache of watermarked Blob promises, keyed by the same selKey used in
+// catSelected. The actual bug behind "share only works for one image" is
+// the browser's "user activation" timer: navigator.share() only stays
+// callable for a few seconds after the tap that triggered it, and
+// watermarking several photos (canvas draw + encode, per photo) can easily
+// take longer than that - by the time share() finally gets called, the
+// permission has already expired, so only whichever photo happened to be
+// ready in time goes through.
+// Fix: start watermarking each photo the moment it's SELECTED (tap on the
+// photo, well before the Share button is even pressed), not when Share is
+// tapped. By the time the person hits Share, most/all of the work is
+// already done and cached - the tap only has to gather already-finished
+// Blobs, which is fast enough to stay inside the activation window even for
+// several photos at once.
+var _wmCache = {};
+function warmWatermarkCache(key, src, mediaType){
+  if(mediaType==="video" || _wmCache[key]) return;
+  _wmCache[key] = watermarkImageBlob(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+}
+
 // Watermarks every selected photo and shares them as real image files
 // straight to WhatsApp - no link, so tapping it never opens the whole app.
 // Genuinely attempts ALL photos in a SINGLE navigator.share() call first
@@ -2181,15 +2240,17 @@ async function shareSelectedWACustomer(){
   }
   var keys = Object.keys(catSelected);
   if(!keys.length){ toast("Select at least one photo first","err"); return; }
-  var items = keys.map(function(k){ return catSelected[k]; });
-  var photoItems = items.filter(function(it){ return it.mediaType!=="video"; });
-  var skippedVideos = items.length - photoItems.length;
-  if(!photoItems.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
+  var photoKeys = keys.filter(function(k){ return catSelected[k].mediaType!=="video"; });
+  var skippedVideos = keys.length - photoKeys.length;
+  if(!photoKeys.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
   if(!navigator.share){ toast("Sharing images isn't supported on this browser/device","err"); return; }
 
-  toast("Preparing "+photoItems.length+" photo(s)...","info");
-  var blobs = await Promise.all(photoItems.map(function(it){
-    return watermarkImageBlob(it.src, WATERMARK_SHOP_NAME, WATERMARK_PHONE);
+  // Almost always already done by now, since selecting a photo starts its
+  // watermarking in the background - this just collects whatever's ready
+  // (and finishes any stragglers) rather than starting fresh from here.
+  var blobs = await Promise.all(photoKeys.map(function(k){
+    if(!_wmCache[k]) warmWatermarkCache(k, catSelected[k].src, catSelected[k].mediaType);
+    return _wmCache[k];
   }));
   var files = blobs.filter(Boolean).map(function(blob, i){
     return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
@@ -2358,6 +2419,7 @@ function renderCat(){
       imgWrap.className = view==="scroll" ? "iscroll" : ("igrid"+(view==="grid1"?" g1":""));
 
       imgs.forEach(function(img, idx){
+        var selKey = img.entryId+"|||"+img.itemIdx+"|||"+img.imgIdx;
         var card=document.createElement("div");
         card.className = view==="scroll" ? "sitem" : "gitem";
         card.setAttribute("data-src", img.src);
@@ -2372,10 +2434,25 @@ function renderCat(){
           playIcon.className="vidplayicon";
           playIcon.innerHTML="&#9654;";
           card.appendChild(playIcon);
+        } else if(!img.src){
+          // No photo data at all for this entry - show a clear message
+          // instead of a silent blank box, so this is diagnosable rather
+          // than looking like the app is just broken.
+          var noDataMsg=document.createElement("div");
+          noDataMsg.style.cssText="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--txt3);text-align:center;padding:6px;background:var(--sur2)";
+          noDataMsg.textContent="No photo data";
+          card.appendChild(noDataMsg);
         } else {
           var imgEl=document.createElement("img");
           imgEl.loading="lazy";
           imgEl.dataset.src=img.src;
+          imgEl.onerror=function(){
+            imgEl.style.display="none";
+            var failMsg=document.createElement("div");
+            failMsg.style.cssText="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--txt3);text-align:center;padding:6px;background:var(--sur2)";
+            failMsg.textContent="Photo failed to load";
+            card.appendChild(failMsg);
+          };
           card.appendChild(imgEl);
           lazyObserve(imgEl);
         }
@@ -2403,11 +2480,19 @@ function renderCat(){
           card.appendChild(colTag);
         }
 
-        var selKey = img.entryId+"|||"+img.itemIdx+"|||"+img.imgIdx;
+        // Selection circle only appears while catSelecting is on, and only
+        // IT toggles selection (its own click, stopped from bubbling) - the
+        // rest of the photo always opens the zoomed viewer, same as normal
+        // gallery apps (Google Photos etc).
         if(catSelecting){
           var chk=document.createElement("div");
           chk.className="selchk"+(catSelected[selKey]?" on":"");
           chk.innerHTML = catSelected[selKey] ? "&#10003;" : "";
+          chk.onclick=function(e){
+            e.stopPropagation();
+            toggleCatSelect(selKey, img.src, img.mediaType, img.itemName);
+            renderCat();
+          };
           card.appendChild(chk);
         }
 
@@ -2416,14 +2501,43 @@ function renderCat(){
           card.appendChild(scap);
         }
 
+        // Tapping the photo itself always zooms it in - select mode never
+        // hijacks that. The only way into select mode from a photo is a
+        // long-press (below); once in select mode, only the circle (above)
+        // toggles selection.
         card.onclick=function(){
-          if(catSelecting){
-            toggleCatSelect(selKey, img.src, img.mediaType, img.itemName);
-            renderCat();
-          } else {
-            openLB(allSrcs, allMeta, idx);
-          }
+          if(Date.now() < _catLongPressGuardUntil) return; // swallow the stray click right after a long-press
+          openLB(allSrcs, allMeta, idx);
         };
+
+        // Long-press (~500ms) on any photo enters select mode and selects
+        // that photo, without needing to find the "Select" toggle first.
+        (function(selKeyLP, srcLP, mediaTypeLP, itemNameLP){
+          var pressTimer=null;
+          var startLongPress=function(){
+            clearLongPress();
+            pressTimer=setTimeout(function(){
+              pressTimer=null;
+              _catLongPressGuardUntil = Date.now()+500;
+              if(!catSelecting){
+                catSelecting=true;
+                var btn=document.getElementById("catSelBtn");
+                if(btn){ btn.innerHTML="&#9745; Selecting"; btn.classList.add("active"); }
+                var bar=document.getElementById("catSelBar");
+                if(bar) bar.style.display="flex";
+              }
+              if(!catSelected[selKeyLP]){ toggleCatSelect(selKeyLP, srcLP, mediaTypeLP, itemNameLP); }
+              renderCat();
+            }, 500);
+          };
+          var clearLongPress=function(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } };
+          card.addEventListener("pointerdown", startLongPress);
+          card.addEventListener("pointerup", clearLongPress);
+          card.addEventListener("pointerleave", clearLongPress);
+          card.addEventListener("pointercancel", clearLongPress);
+          card.addEventListener("pointermove", clearLongPress); // scrolling/dragging shouldn't count as a long-press
+        })(selKey, img.src, img.mediaType, img.itemName);
+
         imgWrap.appendChild(card);
       });
 
