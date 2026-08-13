@@ -2264,14 +2264,31 @@ var _shareQueueTotal = 0;    // number of batches
 var _shareQueuePhotoTotal = 0; // total photos across all batches
 var _shareQueueVideosSkipped = 0;
 
+// navigator.canShare() sometimes claims a browser supports sharing several
+// files at once when navigator.share() itself then rejects it for real
+// ("Permission denied") - a known inaccuracy on some Android browsers.
+// Rather than hit that wall on every single share, this device's real
+// answer is tested ONCE and remembered (saved on-device), so every share
+// after that first determination goes straight to whatever actually works.
+var MULTIFILE_SHARE_KEY = "pb_multifile_share_supported";
+function getMultiFileShareSupport(){
+  try{
+    var v = localStorage.getItem(MULTIFILE_SHARE_KEY);
+    if(v==="1") return true;
+    if(v==="0") return false;
+  }catch(e){}
+  return null; // not determined yet
+}
+function setMultiFileShareSupport(supported){
+  try{ localStorage.setItem(MULTIFILE_SHARE_KEY, supported?"1":"0"); }catch(e){}
+}
+
 // navigator.canShare() is free to call - it needs no user gesture, unlike
 // navigator.share() itself - so this can safely probe downward from a
 // generous ceiling to find the largest number of files this specific
-// browser/device will actually let one share() call carry (apps like
-// Google Photos use Android's native share intent directly and can often
-// manage ~25-30 at once; the web's Web Share API sometimes accepts fewer,
-// varying by browser/OS build - this finds the real number instead of
-// guessing).
+// browser/device CLAIMS it can carry in one share() call. Used only as the
+// starting guess for the one-time real test above - the actual share()
+// attempt is what determines the truth.
 function pickShareBatchSize(files){
   if(!navigator.canShare) return 1;
   var candidates=[30,25,20,15,12,10,8,6,5,4,3,2,1];
@@ -2317,7 +2334,10 @@ async function shareSelectedWACustomer(){
   });
   if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
 
-  var batchSize = pickShareBatchSize(files);
+  // If this device already proved it can't do multi-file shares, don't
+  // waste another attempt re-discovering that - go straight to singles.
+  var knownSupport = getMultiFileShareSupport();
+  var batchSize = (knownSupport===false) ? 1 : pickShareBatchSize(files);
   var batches = [];
   for(var i=0;i<files.length;i+=batchSize){ batches.push(files.slice(i,i+batchSize)); }
 
@@ -2335,8 +2355,13 @@ async function shareNextFromQueue(){
   if(!_shareQueue.length) return;
   var batch = _shareQueue.shift();
   var batchNum = _shareQueueTotal - _shareQueue.length;
+  // If this browser hasn't proven multi-file support one way or the other
+  // yet, and this batch has more than one photo in it, this attempt IS the
+  // real test - its outcome gets remembered for every future share.
+  var isMultiFileTest = (batch.length>1 && getMultiFileShareSupport()===null);
   try{
     await navigator.share({files:batch});
+    if(isMultiFileTest) setMultiFileShareSupport(true);
     if(_shareQueue.length){
       toast("Sent batch "+batchNum+" of "+_shareQueueTotal+" ("+batch.length+" photo"+(batch.length===1?"":"s")+") - tap Share again for the next batch","ok",4500);
     } else {
@@ -2346,6 +2371,20 @@ async function shareNextFromQueue(){
     if(e && e.name==="AbortError"){
       _shareQueue.unshift(batch); // put it back so the same tap retries it next time
       toast("Cancelled - tap Share again to retry this batch","info");
+      refreshShareButtonLabel();
+      return;
+    }
+    if(isMultiFileTest){
+      // This device claimed (via canShare) it could handle several files
+      // at once, but actually sharing them just failed for real - remember
+      // that for next time, and quietly re-split everything still left
+      // (including this failed batch) into single-photo batches so the
+      // person can keep going without hitting this again.
+      setMultiFileShareSupport(false);
+      var remainingFiles = [].concat.apply([], [batch].concat(_shareQueue));
+      _shareQueue = remainingFiles.map(function(f){ return [f]; });
+      _shareQueueTotal = _shareQueue.length;
+      toast("This browser can only send one photo per share - switching to one at a time. Tap Share again to continue ("+_shareQueueTotal+" left)","info",5500);
       refreshShareButtonLabel();
       return;
     }
