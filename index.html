@@ -2115,6 +2115,11 @@ function updateCatSelBar(){
 function refreshShareButtonLabel(){
   var btn = document.getElementById("catShareCustBtn");
   if(!btn) return;
+  if(_shareQueue.length){
+    var sentSoFar = _shareQueueTotal - _shareQueue.length;
+    btn.textContent = "Tap for photo "+(sentSoFar+1)+" of "+_shareQueueTotal;
+    return;
+  }
   var keys = Object.keys(catSelected);
   var photoKeys = keys.filter(function(k){ return catSelected[k].mediaType!=="video"; });
   var n = keys.length;
@@ -2309,12 +2314,16 @@ async function shareSelectedWACustomer(){
 
   // This phone's browser can't attach several files to one WhatsApp share
   // (a platform/browser limit, not something the app can force around) -
-  // fall back to one tap per photo, which always works.
+  // queue them for one tap per photo. Deliberately NOT calling share()
+  // again here: this handler already spent this tap's one allowed share
+  // attempt above (even though it failed) - a browser only grants ONE
+  // navigator.share() call per tap, so trying again immediately in the same
+  // handler throws the exact same "must be handling a user gesture" error.
+  // The next real tap (a fresh gesture) is what actually sends photo 1.
   _shareQueue = files;
   _shareQueueTotal = files.length;
   _shareQueueVideosSkipped = skippedVideos;
-  toast("This browser can only attach one photo per share - tap the Share button again to send each one ("+files.length+" ready)","info",5500);
-  await shareNextFromQueue();
+  toast("Sending one at a time instead - tap Share again to send photo 1 of "+files.length,"info",5500);
 }
 
 async function shareNextFromQueue(){
@@ -2332,10 +2341,12 @@ async function shareNextFromQueue(){
     if(e && e.name==="AbortError"){
       _shareQueue.unshift(file); // put it back so the same tap retries it next time
       toast("Cancelled - tap Share again to retry this photo","info");
+      refreshShareButtonLabel();
       return;
     }
     toast("Couldn't share photo "+num+": "+(e&&e.message||"unknown error"),"err");
   }
+  refreshShareButtonLabel();
 }
 
 var _catTreeCache=null,_catTreeCacheKey=null;
