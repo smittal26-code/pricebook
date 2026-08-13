@@ -2457,10 +2457,6 @@ function renderCat(){
       });
       iacts.appendChild(vtog);
 
-      var waBtn=document.createElement("button");waBtn.className="btn wa xs";waBtn.textContent="WA";
-      waBtn.onclick=function(){waItem(sm,itN);};
-      iacts.appendChild(waBtn);
-
       ilabel.appendChild(ilabelLeft);ilabel.appendChild(iacts);
       irow.appendChild(ilabel);
 
@@ -2514,12 +2510,6 @@ function renderCat(){
             starsDiv.appendChild(s);
           }
           card.appendChild(starsDiv);
-        }
-
-        if(!catSelecting){
-          var wb=document.createElement("button");wb.className="wabtn";wb.textContent="WA";
-          wb.onclick=function(e){e.stopPropagation();waImg(img.src,itN);};
-          card.appendChild(wb);
         }
 
         if(img.collection){
@@ -3444,7 +3434,6 @@ function waMessageNext(){
 }
 function waShareCur(){waImg(lbImgs[lbIdx],document.getElementById("lbtitle").textContent);}
 function dlCur(){var a=document.createElement("a");a.href=lbImgs[lbIdx];a.download=(document.getElementById("lbtitle").textContent||"image")+".jpg";document.body.appendChild(a);a.click();a.remove();}
-function waItem(sm,itN){var tree=buildCatData();var imgs=(tree[sm]||{})[itN]||[];var msg="*"+itN+"* ("+sm+")"+String.fromCharCode(10)+imgs.length+" images"+String.fromCharCode(10)+String.fromCharCode(10)+"Sent from Jewellery Price Book";window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");}
 function openLM(desc,params){curLnk=location.href.split("?")[0]+params;document.getElementById("lmdesc").textContent=desc;document.getElementById("lmurl").textContent=curLnk;document.getElementById("lnkmbg").classList.add("open");}
 function closeLM(){document.getElementById("lnkmbg").classList.remove("open");}
 function shareLnk(sm,itN){openLM("Share "+itN+" catalogue","?cat="+encodeURIComponent(catMaster)+"&sm="+encodeURIComponent(sm)+"&item="+encodeURIComponent(itN));}
