@@ -2116,8 +2116,9 @@ function refreshShareButtonLabel(){
   var btn = document.getElementById("catShareCustBtn");
   if(!btn) return;
   if(_shareQueue.length){
-    var sentSoFar = _shareQueueTotal - _shareQueue.length;
-    btn.textContent = "Tap for photo "+(sentSoFar+1)+" of "+_shareQueueTotal;
+    var sentBatches = _shareQueueTotal - _shareQueue.length;
+    var nextBatchSize = _shareQueue[0].length;
+    btn.textContent = "Tap for batch "+(sentBatches+1)+" of "+_shareQueueTotal+" ("+nextBatchSize+" photo"+(nextBatchSize===1?"":"s")+")";
     return;
   }
   var keys = Object.keys(catSelected);
@@ -2258,9 +2259,29 @@ function warmWatermarkCache(key, src, mediaType){
 // not something any web app can route around.
 var WATERMARK_SHOP_NAME = "SK Jewellers";
 var WATERMARK_PHONE = "9312281343";
-var _shareQueue = [];
-var _shareQueueTotal = 0;
+var _shareQueue = [];        // array of BATCHES (each batch is an array of Files)
+var _shareQueueTotal = 0;    // number of batches
+var _shareQueuePhotoTotal = 0; // total photos across all batches
 var _shareQueueVideosSkipped = 0;
+
+// navigator.canShare() is free to call - it needs no user gesture, unlike
+// navigator.share() itself - so this can safely probe downward from a
+// generous ceiling to find the largest number of files this specific
+// browser/device will actually let one share() call carry (apps like
+// Google Photos use Android's native share intent directly and can often
+// manage ~25-30 at once; the web's Web Share API sometimes accepts fewer,
+// varying by browser/OS build - this finds the real number instead of
+// guessing).
+function pickShareBatchSize(files){
+  if(!navigator.canShare) return 1;
+  var candidates=[30,25,20,15,12,10,8,6,5,4,3,2,1];
+  for(var i=0;i<candidates.length;i++){
+    var n=candidates[i];
+    if(n>files.length) continue;
+    if(navigator.canShare({files:files.slice(0,n)})) return n;
+  }
+  return 1;
+}
 
 async function shareSelectedWACustomer(){
   if(_shareQueue.length){
@@ -2277,12 +2298,9 @@ async function shareSelectedWACustomer(){
   // CRITICAL: never call navigator.share() while any photo is still mid-
   // watermarking. Calling it too early is exactly what produces the
   // "must be handling a user gesture" error - the browser's share
-  // permission times out while still waiting on the canvas work, and that
-  // failure was also what caused the fallback to only manage one photo.
+  // permission times out while still waiting on the canvas work.
   // Instead, make sure warming has started for everything selected, and if
-  // it isn't finished yet, stop here and ask for a fresh tap once it is -
-  // that next tap's activation window is used only for the instant,
-  // already-finished share, so it always has enough time.
+  // it isn't finished yet, stop here and ask for a fresh tap once it is.
   var notReady = photoKeys.filter(function(k){
     if(!_wmCache[k]) warmWatermarkCache(k, catSelected[k].src, catSelected[k].mediaType);
     return !_wmReady[k];
@@ -2299,52 +2317,39 @@ async function shareSelectedWACustomer(){
   });
   if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
 
-  // Genuine single-tap, all-at-once attempt - safe now since nothing here
-  // has to wait on canvas work anymore.
-  if(navigator.canShare && navigator.canShare({files:files})){
-    try{
-      await navigator.share({files:files});
-      toast("Shared "+files.length+" photo(s) to customer"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
-      return;
-    }catch(e){
-      if(e && e.name==="AbortError") return; // user closed the share sheet - not an error
-      // fall through - real device/browser rejection, not just a slow prep
-    }
-  }
+  var batchSize = pickShareBatchSize(files);
+  var batches = [];
+  for(var i=0;i<files.length;i+=batchSize){ batches.push(files.slice(i,i+batchSize)); }
 
-  // This phone's browser can't attach several files to one WhatsApp share
-  // (a platform/browser limit, not something the app can force around) -
-  // queue them for one tap per photo. Deliberately NOT calling share()
-  // again here: this handler already spent this tap's one allowed share
-  // attempt above (even though it failed) - a browser only grants ONE
-  // navigator.share() call per tap, so trying again immediately in the same
-  // handler throws the exact same "must be handling a user gesture" error.
-  // The next real tap (a fresh gesture) is what actually sends photo 1.
-  _shareQueue = files;
-  _shareQueueTotal = files.length;
+  _shareQueue = batches;
+  _shareQueueTotal = batches.length;
+  _shareQueuePhotoTotal = files.length;
   _shareQueueVideosSkipped = skippedVideos;
-  toast("Sending one at a time instead - tap Share again to send photo 1 of "+files.length,"info",5500);
+
+  // Send the first batch right away - this tap's activation is still
+  // fresh, and this is the only navigator.share() call made this tap.
+  await shareNextFromQueue();
 }
 
 async function shareNextFromQueue(){
   if(!_shareQueue.length) return;
-  var file = _shareQueue.shift();
-  var num = _shareQueueTotal - _shareQueue.length;
+  var batch = _shareQueue.shift();
+  var batchNum = _shareQueueTotal - _shareQueue.length;
   try{
-    await navigator.share({files:[file]});
+    await navigator.share({files:batch});
     if(_shareQueue.length){
-      toast("Sent "+num+" of "+_shareQueueTotal+" - tap Share again for the next one","ok",4000);
+      toast("Sent batch "+batchNum+" of "+_shareQueueTotal+" ("+batch.length+" photo"+(batch.length===1?"":"s")+") - tap Share again for the next batch","ok",4500);
     } else {
-      toast("All "+_shareQueueTotal+" photo(s) shared to customer"+(_shareQueueVideosSkipped?(" ("+_shareQueueVideosSkipped+" video(s) skipped)"):""),"ok");
+      toast("All "+_shareQueuePhotoTotal+" photo(s) shared to customer"+(_shareQueueVideosSkipped?(" ("+_shareQueueVideosSkipped+" video(s) skipped)"):""),"ok");
     }
   }catch(e){
     if(e && e.name==="AbortError"){
-      _shareQueue.unshift(file); // put it back so the same tap retries it next time
-      toast("Cancelled - tap Share again to retry this photo","info");
+      _shareQueue.unshift(batch); // put it back so the same tap retries it next time
+      toast("Cancelled - tap Share again to retry this batch","info");
       refreshShareButtonLabel();
       return;
     }
-    toast("Couldn't share photo "+num+": "+(e&&e.message||"unknown error"),"err");
+    toast("Couldn't share batch "+batchNum+": "+(e&&e.message||"unknown error"),"err");
   }
   refreshShareButtonLabel();
 }
