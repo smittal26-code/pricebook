@@ -724,6 +724,7 @@ html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var
 <div class="toast" id="toast"></div>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // Canonical list of every Master category. Adding a master in future only
 // needs an entry here (plus a CSS color trio like --gem/--gem-l/--gem-d) -
@@ -2075,7 +2076,6 @@ function setCatCollection(v){ catCollection=v; renderCat(); }
 function toggleCatSelectMode(){
   catSelecting = !catSelecting;
   catSelected = {};
-  _shareQueue = []; _shareQueueTotal = 0;
   _wmCache = {}; _wmReady = {};
   document.getElementById("catSelBtn").innerHTML = catSelecting ? "&#9745; Selecting" : "&#9744; Select";
   document.getElementById("catSelBtn").classList.toggle("active", catSelecting);
@@ -2083,7 +2083,7 @@ function toggleCatSelectMode(){
   updateCatSelBar();
   renderCat();
 }
-function clearCatSelection(){ catSelected={}; _shareQueue=[]; _shareQueueTotal=0; _wmCache={}; _wmReady={}; updateCatSelBar(); renderCat(); }
+function clearCatSelection(){ catSelected={}; _wmCache={}; _wmReady={}; updateCatSelBar(); renderCat(); }
 // Selects every photo/video currently visible under whatever master/
 // collection filter is active - so "Select All" respects the same filters
 // you're already looking at rather than grabbing the entire catalogue.
@@ -2115,12 +2115,6 @@ function updateCatSelBar(){
 function refreshShareButtonLabel(){
   var btn = document.getElementById("catShareCustBtn");
   if(!btn) return;
-  if(_shareQueue.length){
-    var sentBatches = _shareQueueTotal - _shareQueue.length;
-    var nextBatchSize = _shareQueue[0].length;
-    btn.textContent = "Tap for batch "+(sentBatches+1)+" of "+_shareQueueTotal+" ("+nextBatchSize+" photo"+(nextBatchSize===1?"":"s")+")";
-    return;
-  }
   var keys = Object.keys(catSelected);
   var photoKeys = keys.filter(function(k){ return catSelected[k].mediaType!=="video"; });
   var n = keys.length;
@@ -2129,7 +2123,7 @@ function refreshShareButtonLabel(){
   if(readyCount < photoKeys.length){
     btn.textContent = "Preparing "+readyCount+"/"+photoKeys.length+"...";
   } else {
-    btn.textContent = "Share "+n+" Image"+(n===1?"":"s");
+    btn.textContent = "Share "+n+" Image"+(n===1?"":"s")+" as PDF";
   }
 }
 function toggleCatSelect(k, src, mediaType, itemName){
@@ -2148,11 +2142,13 @@ function toggleCatSelect(k, src, mediaType, itemName){
 //      photo at very low opacity - enough that a cropped/screenshotted
 //      re-use still carries a mark somewhere, but never bright or large
 //      enough to distract from the jewellery itself.
-function watermarkImageToCanvas(src, shopName, phoneText){
+function watermarkImageToCanvas(src, shopName, phoneText, maxDim){
   return new Promise(function(resolve){
     var img = new Image();
     img.onload = function(){
-      var w = img.naturalWidth || 1200, h = img.naturalHeight || 1200;
+      var w0 = img.naturalWidth || 1200, h0 = img.naturalHeight || 1200;
+      var scale = maxDim ? Math.min(1, maxDim/Math.max(w0,h0)) : 1;
+      var w = Math.round(w0*scale), h = Math.round(h0*scale);
       var c = document.createElement("canvas");
       c.width = w; c.height = h;
       var ctx = c.getContext("2d");
@@ -2211,14 +2207,6 @@ function watermarkImageToCanvas(src, shopName, phoneText){
     img.src = src;
   });
 }
-function watermarkImageBlob(src, shopName, phoneText){
-  return watermarkImageToCanvas(src, shopName, phoneText).then(function(c){
-    return new Promise(function(resolve){
-      if(!c){ resolve(null); return; }
-      c.toBlob(function(blob){ resolve(blob); }, "image/jpeg", 0.92);
-    });
-  });
-}
 
 // Cache of watermarked Blob promises, keyed by the same selKey used in
 // catSelected. The actual bug behind "share only works for one image" is
@@ -2231,93 +2219,65 @@ function watermarkImageBlob(src, shopName, phoneText){
 // Fix: start watermarking each photo the moment it's SELECTED (tap on the
 // photo, well before the Share button is even pressed), not when Share is
 // tapped. By the time the person hits Share, most/all of the work is
-// already done and cached - the tap only has to gather already-finished
-// Blobs, which is fast enough to stay inside the activation window even for
-// several photos at once.
+// already done and cached.
+// Cache stores {dataUrl, width, height} per photo (not a Blob) - exactly
+// what's needed to drop the photo straight into a PDF page with no extra
+// decode step at share time.
 var _wmCache = {};
 var _wmReady = {}; // key -> true once that photo's watermarking has actually finished (success or fail)
+var WM_PDF_MAXDIM = 1100; // downscale cap for PDF pages - keeps file size/build time sane even for large batches
 function warmWatermarkCache(key, src, mediaType){
   if(mediaType==="video" || _wmCache[key]) return;
   _wmReady[key] = false;
-  _wmCache[key] = watermarkImageBlob(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE).then(function(blob){
+  _wmCache[key] = watermarkImageToCanvas(src, WATERMARK_SHOP_NAME, WATERMARK_PHONE, WM_PDF_MAXDIM).then(function(c){
     _wmReady[key] = true;
     refreshShareButtonLabel();
-    return blob;
+    if(!c) return null;
+    return {dataUrl: c.toDataURL("image/jpeg", 0.85), width: c.width, height: c.height};
   });
 }
 
-// Watermarks every selected photo and shares them as real image files
-// straight to WhatsApp - no link, so tapping it never opens the whole app.
-// Genuinely attempts ALL photos in a SINGLE navigator.share() call first
-// (one tap = every photo in one WhatsApp attachment, not one-by-one) - this
-// is a real, single simultaneous share when the phone's browser supports
-// multi-file Web Share (current Chrome on Android does). The share call is
-// deliberately kept to just {files} with no title/text, since some
-// browsers reject file+text combinations even when the same files-only
-// call would succeed. Only if that's truly not supported does it fall back
-// to one photo per tap - a hard platform limit on unsupported browsers,
-// not something any web app can route around.
+// ===== Share to Customer: one PDF, any number of photos =====
+// Web Share can only reliably hand ONE file to WhatsApp per tap on many
+// Android browsers (some can't attach several image files at once at all,
+// even when they claim to support it) - but a single PDF document with one
+// photo per page is still just ONE file, so it uses the exact same,
+// already-proven-reliable single-file share path regardless of whether
+// there are 2 photos selected or 200. This is what makes "any number of
+// photos, one tap" actually possible on phones that can't do multi-image
+// Web Share at all.
 var WATERMARK_SHOP_NAME = "SK Jewellers";
 var WATERMARK_PHONE = "9312281343";
-var _shareQueue = [];        // array of BATCHES (each batch is an array of Files)
-var _shareQueueTotal = 0;    // number of batches
-var _shareQueuePhotoTotal = 0; // total photos across all batches
-var _shareQueueVideosSkipped = 0;
 
-// navigator.canShare() sometimes claims a browser supports sharing several
-// files at once when navigator.share() itself then rejects it for real
-// ("Permission denied") - a known inaccuracy on some Android browsers.
-// Rather than hit that wall on every single share, this device's real
-// answer is tested ONCE and remembered (saved on-device), so every share
-// after that first determination goes straight to whatever actually works.
-var MULTIFILE_SHARE_KEY = "pb_multifile_share_supported";
-function getMultiFileShareSupport(){
-  try{
-    var v = localStorage.getItem(MULTIFILE_SHARE_KEY);
-    if(v==="1") return true;
-    if(v==="0") return false;
-  }catch(e){}
-  return null; // not determined yet
-}
-function setMultiFileShareSupport(supported){
-  try{ localStorage.setItem(MULTIFILE_SHARE_KEY, supported?"1":"0"); }catch(e){}
-}
-
-// navigator.canShare() is free to call - it needs no user gesture, unlike
-// navigator.share() itself - so this can safely probe downward from a
-// generous ceiling to find the largest number of files this specific
-// browser/device CLAIMS it can carry in one share() call. Used only as the
-// starting guess for the one-time real test above - the actual share()
-// attempt is what determines the truth.
-function pickShareBatchSize(files){
-  if(!navigator.canShare) return 1;
-  var candidates=[30,25,20,15,12,10,8,6,5,4,3,2,1];
-  for(var i=0;i<candidates.length;i++){
-    var n=candidates[i];
-    if(n>files.length) continue;
-    if(navigator.canShare({files:files.slice(0,n)})) return n;
+async function buildWatermarkedPDFBlob(keys, onProgress){
+  if(!window.jspdf || !window.jspdf.jsPDF){ throw new Error("PDF library still loading - try again in a moment"); }
+  var doc = null;
+  for(var i=0;i<keys.length;i++){
+    var result = await _wmCache[keys[i]]; // already resolved by the readiness gate before this runs
+    if(result){
+      if(!doc){
+        doc = new window.jspdf.jsPDF({unit:"px", format:[result.width, result.height], compress:true});
+      } else {
+        doc.addPage([result.width, result.height]);
+      }
+      doc.addImage(result.dataUrl, "JPEG", 0, 0, result.width, result.height, undefined, "FAST");
+    }
+    if(onProgress) onProgress(i+1, keys.length);
   }
-  return 1;
+  return doc ? doc.output("blob") : null;
 }
 
 async function shareSelectedWACustomer(){
-  if(_shareQueue.length){
-    await shareNextFromQueue();
-    return;
-  }
   var keys = Object.keys(catSelected);
   if(!keys.length){ toast("Select at least one photo first","err"); return; }
   var photoKeys = keys.filter(function(k){ return catSelected[k].mediaType!=="video"; });
   var skippedVideos = keys.length - photoKeys.length;
-  if(!photoKeys.length){ toast("Select at least one photo - videos can't be watermarked","err"); return; }
-  if(!navigator.share){ toast("Sharing images isn't supported on this browser/device","err"); return; }
+  if(!photoKeys.length){ toast("Select at least one photo - videos can't be included","err"); return; }
+  if(!navigator.share){ toast("Sharing isn't supported on this browser/device","err"); return; }
 
-  // CRITICAL: never call navigator.share() while any photo is still mid-
-  // watermarking. Calling it too early is exactly what produces the
-  // "must be handling a user gesture" error - the browser's share
-  // permission times out while still waiting on the canvas work.
-  // Instead, make sure warming has started for everything selected, and if
-  // it isn't finished yet, stop here and ask for a fresh tap once it is.
+  // Same rule as before: never touch navigator.share() while photos are
+  // still mid-watermarking, or the permission window can expire before it
+  // ever gets called. Wait for a fresh tap once everything's ready.
   var notReady = photoKeys.filter(function(k){
     if(!_wmCache[k]) warmWatermarkCache(k, catSelected[k].src, catSelected[k].mediaType);
     return !_wmReady[k];
@@ -2328,67 +2288,29 @@ async function shareSelectedWACustomer(){
     return;
   }
 
-  var blobs = await Promise.all(photoKeys.map(function(k){ return _wmCache[k]; })); // already resolved - instant
-  var files = blobs.filter(Boolean).map(function(blob, i){
-    return new File([blob], "sk_jewellers_"+(i+1)+".jpg", {type:"image/jpeg"});
-  });
-  if(!files.length){ toast("Couldn't prepare those photos - try again","err"); return; }
-
-  // If this device already proved it can't do multi-file shares, don't
-  // waste another attempt re-discovering that - go straight to singles.
-  var knownSupport = getMultiFileShareSupport();
-  var batchSize = (knownSupport===false) ? 1 : pickShareBatchSize(files);
-  var batches = [];
-  for(var i=0;i<files.length;i+=batchSize){ batches.push(files.slice(i,i+batchSize)); }
-
-  _shareQueue = batches;
-  _shareQueueTotal = batches.length;
-  _shareQueuePhotoTotal = files.length;
-  _shareQueueVideosSkipped = skippedVideos;
-
-  // Send the first batch right away - this tap's activation is still
-  // fresh, and this is the only navigator.share() call made this tap.
-  await shareNextFromQueue();
-}
-
-async function shareNextFromQueue(){
-  if(!_shareQueue.length) return;
-  var batch = _shareQueue.shift();
-  var batchNum = _shareQueueTotal - _shareQueue.length;
-  // If this browser hasn't proven multi-file support one way or the other
-  // yet, and this batch has more than one photo in it, this attempt IS the
-  // real test - its outcome gets remembered for every future share.
-  var isMultiFileTest = (batch.length>1 && getMultiFileShareSupport()===null);
+  var btn = document.getElementById("catShareCustBtn");
+  var restoreLabel = btn ? btn.textContent : "";
+  var pdfBlob;
   try{
-    await navigator.share({files:batch});
-    if(isMultiFileTest) setMultiFileShareSupport(true);
-    if(_shareQueue.length){
-      toast("Sent batch "+batchNum+" of "+_shareQueueTotal+" ("+batch.length+" photo"+(batch.length===1?"":"s")+") - tap Share again for the next batch","ok",4500);
-    } else {
-      toast("All "+_shareQueuePhotoTotal+" photo(s) shared to customer"+(_shareQueueVideosSkipped?(" ("+_shareQueueVideosSkipped+" video(s) skipped)"):""),"ok");
-    }
+    if(btn) btn.textContent = "Building 0/"+photoKeys.length+"...";
+    pdfBlob = await buildWatermarkedPDFBlob(photoKeys, function(done,total){
+      if(btn) btn.textContent = "Building "+done+"/"+total+"...";
+    });
+  }catch(err){
+    toast("Couldn't build the PDF: "+(err&&err.message||"unknown error"),"err");
+    if(btn) btn.textContent = restoreLabel;
+    return;
+  }
+  if(!pdfBlob){ toast("Couldn't prepare those photos - try again","err"); if(btn) btn.textContent = restoreLabel; return; }
+
+  var file = new File([pdfBlob], "SK_Jewellers_"+photoKeys.length+"_designs.pdf", {type:"application/pdf"});
+  try{
+    await navigator.share({files:[file]});
+    toast("Shared "+photoKeys.length+" photo(s) to customer as one PDF"+(skippedVideos?(" ("+skippedVideos+" video(s) skipped)"):""),"ok");
   }catch(e){
-    if(e && e.name==="AbortError"){
-      _shareQueue.unshift(batch); // put it back so the same tap retries it next time
-      toast("Cancelled - tap Share again to retry this batch","info");
-      refreshShareButtonLabel();
-      return;
+    if(e && e.name!=="AbortError"){
+      toast("Couldn't share: "+(e&&e.message||"unknown error"),"err");
     }
-    if(isMultiFileTest){
-      // This device claimed (via canShare) it could handle several files
-      // at once, but actually sharing them just failed for real - remember
-      // that for next time, and quietly re-split everything still left
-      // (including this failed batch) into single-photo batches so the
-      // person can keep going without hitting this again.
-      setMultiFileShareSupport(false);
-      var remainingFiles = [].concat.apply([], [batch].concat(_shareQueue));
-      _shareQueue = remainingFiles.map(function(f){ return [f]; });
-      _shareQueueTotal = _shareQueue.length;
-      toast("This browser can only send one photo per share - switching to one at a time. Tap Share again to continue ("+_shareQueueTotal+" left)","info",5500);
-      refreshShareButtonLabel();
-      return;
-    }
-    toast("Couldn't share batch "+batchNum+": "+(e&&e.message||"unknown error"),"err");
   }
   refreshShareButtonLabel();
 }
